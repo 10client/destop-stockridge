@@ -104,25 +104,41 @@
     const code = String(err.code || (payload && payload.code) || '');
     if (code === 'UPSTREAM_UNREACHABLE' || code === 'OFFLINE') return true;
     if (/shop server could not be reached/i.test(String(err.message || ''))) return true;
-    if (err.isOffline || err.retryable) return true;
-    const status = Number(err.status);
-    return status === 0 || status >= 500;
+    if (err.isOffline) return true;
+    return Number(err.status) === 0;
   }
 
   async function signInOffline(creds) {
     const name = usernameOf(creds && creds.username);
-    const verified = await native.store.checkVerifier(name, creds && creds.pin);
-    if (!verified) {
-      throw new Error('The shop server could not be reached. This till has not signed that person in while online, or the PIN does not match. Connect once, then the same PIN opens the saved stock.');
+    const pin = creds && creds.pin;
+    let verified = null;
+    try {
+      if (native.store.checkVerifier) verified = await native.store.checkVerifier(name, pin);
+    } catch (err) { verified = null; }
+    let known = false;
+    try {
+      if (!verified && native.store.hasVerifier) known = Boolean(await native.store.hasVerifier(name));
+    } catch (err) { known = false; }
+    if (!verified && known) {
+      throw new Error('That PIN does not match the sign-in saved on this till.');
     }
     const saved = (await readUsers())[name] || {};
-    const me = saved.me && saved.me.user ? saved.me : {
-      user: userFromProfile(verified, name),
-      scope: null,
-      settings: {},
-      featureLabels: {},
-      vertical: null,
-    };
+    const cachedMe = await native.store.metaGet('me');
+    const savedName = cachedMe && cachedMe.user ? usernameOf(cachedMe.user.username) : '';
+    if (!verified && savedName !== name && !(saved.me && saved.me.user && usernameOf(saved.me.user.username) === name)) {
+      throw new Error('This till has not signed that person in while connected. Connect once, then the same PIN opens the saved stock.');
+    }
+    let me = saved.me && saved.me.user ? saved.me : null;
+    if (!me && savedName === name && cachedMe && cachedMe.user) me = cachedMe;
+    if (!me || !me.user) {
+      me = {
+        user: userFromProfile(verified, name),
+        scope: null,
+        settings: {},
+        featureLabels: {},
+        vertical: null,
+      };
+    }
     await native.store.metaSet('me', me);
     const token = tokenUsable(saved.token) ? saved.token : null;
     if (token && global.SR && global.SR.api && global.SR.api.setToken) {

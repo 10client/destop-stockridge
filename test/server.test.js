@@ -22,6 +22,8 @@ test('index injection loads the SQLite bridge and does not register a service wo
   assert.doesNotMatch(stripped, /id="login-install"/);
   assert.doesNotMatch(out, /serviceWorker\.register/);
   assert.match(out, /unregister/);
+  assert.match(out, /id="sr-offline-fetch"/);
+  assert.match(out, /UPSTREAM_UNREACHABLE/);
 });
 
 test('serves the UI from the checkout and proxies /api without accepting a path escape', async () => {
@@ -66,5 +68,33 @@ test('serves the UI from the checkout and proxies /api without accepting a path 
   } finally {
     await desktop.close();
     await new Promise((resolve) => upstream.close(resolve));
+  }
+});
+
+test('a closed shop port is an unreachable proxy response, not a successful login', async () => {
+  const dead = http.createServer();
+  await new Promise((resolve) => dead.listen(0, '127.0.0.1', resolve));
+  const deadPort = dead.address().port;
+  await new Promise((resolve) => dead.close(resolve));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-dead-'));
+  fs.mkdirSync(path.join(root, 'public'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'public', 'index.html'), '<head></head><body></body>');
+  const desktop = await startServer({
+    root,
+    origin: `http://127.0.0.1:${deadPort}`,
+    host: '127.0.0.1',
+    port: 0,
+  });
+  try {
+    const api = await fetch(desktop.url + 'api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'ada', pin: '0000' }),
+    });
+    const body = await api.json();
+    assert.equal(api.status, 502);
+    assert.equal(body.code, 'UPSTREAM_UNREACHABLE');
+  } finally {
+    await desktop.close();
   }
 });

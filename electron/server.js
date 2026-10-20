@@ -48,6 +48,36 @@ function insertScript(html, src) {
   return `${html}\n${tag}\n`;
 }
 
+// A 502 from this proxy is the shop being down, not proof the shop answered.
+// The page otherwise treats any HTTP response as "online" and prints the
+// proxy sentence instead of opening the saved till.
+const OFFLINE_FETCH_SCRIPT = `<script id="sr-offline-fetch">
+(function () {
+  if (window.__srShopFetch || !window.fetch) return;
+  window.__srShopFetch = true;
+  var orig = window.fetch;
+  window.fetch = function () {
+    return orig.apply(this, arguments).then(function (res) {
+      var url = '';
+      try { url = String((arguments[0] && arguments[0].url) || arguments[0] || ''); } catch (e) { url = ''; }
+      if (url.indexOf('/api/') === -1 || res.status < 500) return res;
+      return res.clone().text().then(function (text) {
+        if (text.indexOf('UPSTREAM_UNREACHABLE') !== -1 || text.indexOf('The shop server could not be reached.') !== -1) {
+          throw new TypeError('Failed to fetch');
+        }
+        return res;
+      }, function () { return res; });
+    });
+  };
+})();
+</script>`;
+
+function withOfflineFetch(html) {
+  if (html.includes('id="sr-offline-fetch"')) return html;
+  if (/<head\b[^>]*>/i.test(html)) return html.replace(/<head\b[^>]*>/i, (open) => `${open}\n${OFFLINE_FETCH_SCRIPT}`);
+  return `${OFFLINE_FETCH_SCRIPT}\n${html}`;
+}
+
 function desktopIndex(html) {
   const injected = html.includes('store-native.js')
     ? html
@@ -57,7 +87,7 @@ function desktopIndex(html) {
     );
   const withSave = insertScript(injected, '/js/save-status.js');
   const withProduction = insertScript(withSave, '/js/desktop-production.js');
-  return hideInstallChrome(withProduction.replace(
+  return withOfflineFetch(hideInstallChrome(withProduction.replace(
     /if \('serviceWorker' in navigator\) \{[\s\S]*?\}\s*\n\s*<\/script>/,
     `if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function (regs) {
@@ -65,30 +95,14 @@ function desktopIndex(html) {
     });
   }
 </script>`,
-  ));
+  )));
 }
 
-function chromiumTransport() {
+function electronNet() {
   let electron;
   try { electron = require('electron'); } catch (err) { return null; }
-  if (!electron || !electron.net || typeof electron.net.request !== 'function') return null;
-  return {
-    request(options, callback) {
-      const port = options.port && Number(options.port) !== 443 && Number(options.port) !== 80
-        ? `:${options.port}` : '';
-      const client = electron.net.request({
-        method: options.method,
-        url: `${options.protocol}//${options.hostname}${port}${options.path}`,
-        redirect: 'follow',
-      });
-      for (const [key, value] of Object.entries(options.headers || {})) {
-        if (value == null) continue;
-        try { client.setHeader(key, value); } catch (err) { /* a hop header the stack rejects */ }
-      }
-      client.on('response', callback);
-      return client;
-    },
-  };
+  if (!electron || !electron.net || typeof electron.net.fetch !== 'function') return null;
+  return electron.net;
 }
 
 function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port = 0 } = {}) {
@@ -97,7 +111,7 @@ function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port 
     throw new Error(`No StockRidge UI at ${publicDir(root)}. Set STOCKRIDGE_ROOT to the checkout.`);
   }
   const target = new URL(origin || 'https://sample.stockridge.workers.dev');
-  const transport = target.protocol === 'http:' ? http : (chromiumTransport() || https);
+  const transport = target.protocol === 'http:' ? http : https;
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
@@ -185,21 +199,40 @@ function serveStatic(root, urlPath, res, cacheRoot) {
   });
 }
 
-function proxy(req, res, target, transport, url) {
+function unreachable(res) {
+  if (res.headersSent) { res.end(); return; }
+  res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify({ error: 'The shop server could not be reached.', code: 'UPSTREAM_UNREACHABLE' }));
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+function forwardHeaders(raw, { host = null } = {}) {
   const headers = {};
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (HOP.has(key.toLowerCase())) continue;
-    headers[key] = value;
+  for (const [key, value] of Object.entries(raw || {})) {
+    if (HOP.has(key.toLowerCase()) || value == null) continue;
+    headers[key] = Array.isArray(value) ? value.join(', ') : String(value);
   }
-  headers.host = target.host;
+  if (host) headers.host = host;
+  return headers;
+}
+
+function proxyNode(res, target, transport, url, method, headers, body) {
   const upstream = transport.request({
     protocol: target.protocol,
     hostname: target.hostname,
     port: target.port || (target.protocol === 'https:' ? 443 : 80),
-    method: req.method,
+    method,
     path: url.pathname + url.search,
     headers,
-    timeout: 60000,
+    timeout: 20000,
   }, (pres) => {
     const out = {};
     for (const [key, value] of Object.entries(pres.headers)) {
@@ -210,12 +243,39 @@ function proxy(req, res, target, transport, url) {
     pres.pipe(res);
   });
   upstream.on('timeout', () => upstream.destroy(new Error('The Worker did not answer in time.')));
-  upstream.on('error', () => {
-    if (res.headersSent) { res.end(); return; }
-    res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify({ error: 'The shop server could not be reached.', code: 'UPSTREAM_UNREACHABLE' }));
-  });
-  req.pipe(upstream);
+  upstream.on('error', () => unreachable(res));
+  if (body && body.length) upstream.write(body);
+  upstream.end();
+}
+
+function proxy(req, res, target, transport, url) {
+  const net = target.protocol === 'https:' ? electronNet() : null;
+  readBody(req).then(async (body) => {
+    const method = req.method || 'GET';
+    if (net) {
+      try {
+        const init = {
+          method,
+          headers: forwardHeaders(req.headers),
+          redirect: 'follow',
+        };
+        if (method !== 'GET' && method !== 'HEAD') init.body = new Uint8Array(body);
+        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+          init.signal = AbortSignal.timeout(20000);
+        }
+        const response = await net.fetch(target.origin + url.pathname + url.search, init);
+        const buf = Buffer.from(await response.arrayBuffer());
+        const out = {};
+        response.headers.forEach((value, key) => {
+          if (!HOP.has(String(key).toLowerCase())) out[key] = value;
+        });
+        res.writeHead(response.status, out);
+        res.end(buf);
+        return;
+      } catch (err) { /* Chromium could not reach it; Node gets one try */ }
+    }
+    proxyNode(res, target, transport, url, method, forwardHeaders(req.headers, { host: target.host }), body);
+  }).catch(() => unreachable(res));
 }
 
 module.exports = { startServer, desktopIndex, safeFile };

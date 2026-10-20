@@ -23,7 +23,7 @@ const METHODS = new Set([
   'logPut', 'logAll', 'logClear',
   'exportAll', 'importAll', 'info',
   'reserve', 'reserveFromSale', 'reservedByProduct', 'dropReservation',
-  'rememberVerifier', 'checkVerifier',
+  'rememberVerifier', 'checkVerifier', 'hasVerifier',
 ]);
 
 let store = null;
