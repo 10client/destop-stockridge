@@ -33,7 +33,7 @@ npm run archive
 
 That builds for the operating system you are on. With no origin set, it signs in against the same Turso books as the PWA, `https://sample.stockridge.workers.dev`. The file lands in `dist/`.
 
-The office host `https://stockridge.stockridge.workers.dev` is an older copy. It does not have water packing or bakery, and it is not the Turso database. Do not point a till at it.
+The office host `https://stockridge.stockridge.workers.dev` is the same Turso books as the sample PWA. Either address shows water packing, bakery and the other verticals. A later client's own Worker still replaces the default.
 
 A later client's own Worker replaces the default:
 
