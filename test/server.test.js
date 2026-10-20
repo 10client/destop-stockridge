@@ -13,6 +13,8 @@ test('index injection loads the SQLite bridge and does not register a service wo
   const out = desktopIndex(html);
   assert.match(out, /store-native\.js/);
   assert.match(out, /save-status\.js[\s\S]*desktop-production\.js/);
+  assert.match(out, /sr-native-install/);
+  assert.match(out, /#install-btn,#nav-install,#login-install\{display:none!important\}/);
   assert.doesNotMatch(out, /serviceWorker\.register/);
   assert.match(out, /unregister/);
 });

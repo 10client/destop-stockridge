@@ -47,6 +47,13 @@ function insertScript(html, src) {
   return `${html}\n${tag}\n`;
 }
 
+function hideInstallChrome(html) {
+  if (html.includes('sr-native-install')) return html;
+  const style = '<style id="sr-native-install">#install-btn,#nav-install,#login-install{display:none!important}</style>';
+  if (html.includes('</head>')) return html.replace('</head>', `${style}\n</head>`);
+  return `${style}\n${html}`;
+}
+
 function desktopIndex(html) {
   const injected = html.includes('store-native.js')
     ? html
@@ -56,7 +63,7 @@ function desktopIndex(html) {
     );
   const withSave = insertScript(injected, '/js/save-status.js');
   const withProduction = insertScript(withSave, '/js/desktop-production.js');
-  return withProduction.replace(
+  return hideInstallChrome(withProduction.replace(
     /if \('serviceWorker' in navigator\) \{[\s\S]*?\}\s*\n\s*<\/script>/,
     `if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function (regs) {
@@ -64,7 +71,7 @@ function desktopIndex(html) {
     });
   }
 </script>`,
-  );
+  ));
 }
 
 function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port = 0 } = {}) {

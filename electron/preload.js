@@ -22,6 +22,7 @@ for (const method of METHODS) {
 
 contextBridge.exposeInMainWorld('stockridgeNative', {
   engine: 'sqlite',
+  shell: 'electron',
   store,
   backup: () => ipcRenderer.invoke('desktop:backup'),
   info: () => ipcRenderer.invoke('desktop:info'),

@@ -67,6 +67,7 @@ If Electron says it cannot open the native SQLite module, run `npm run rebuild` 
 - The first launch copies an existing IndexedDB mirror and outbox into SQLite, once.
 - The service worker is not used here. The file on disk is the cache.
 - A second window is refused, so two processes cannot write the same file.
+- Download and Install stay on the website. This window hides them. An Android WebView or Capacitor shell hides them the same way. A browser PWA still shows them.
 
 ## What this is not
 

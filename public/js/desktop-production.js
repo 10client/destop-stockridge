@@ -5,6 +5,14 @@
   const native = global.stockridgeNative;
   if (!native || !native.store) return;
 
+  // The website keeps Download and Install. This window is already the app.
+  if (!document.getElementById('sr-native-install')) {
+    const style = document.createElement('style');
+    style.id = 'sr-native-install';
+    style.textContent = '#install-btn,#nav-install,#login-install{display:none!important}';
+    (document.head || document.documentElement).appendChild(style);
+  }
+
   function whenReady(fn) {
     if (global.SR && global.SR.api && global.SR.print && global.SR.sync && global.SR.store) fn();
     else setTimeout(() => whenReady(fn), 30);
