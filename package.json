@@ -7,20 +7,21 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "rebuild": "electron-rebuild -f -w better-sqlite3-multiple-ciphers",
     "stage": "node tools/stage-ui.js",
-    "archive": "node tools/stage-ui.js && electron-builder",
-    "test": "node --test test/device-store.test.js test/server.test.js test/paths.test.js"
+    "archive": "node tools/stage-ui.js && node tools/archive.js",
+    "publish-update": "node tools/publish-update.js",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=20.11"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0"
+    "better-sqlite3-multiple-ciphers": "11.10.0"
   },
   "devDependencies": {
-    "electron": "^33.2.1",
     "@electron/rebuild": "^3.7.1",
+    "electron": "^33.2.1",
     "electron-builder": "^25.1.8"
   },
   "build": {
@@ -28,18 +29,49 @@
     "productName": "StockRidge",
     "artifactName": "StockRidge-${version}-${os}-${arch}.${ext}",
     "asar": true,
-    "asarUnpack": ["**/node_modules/better-sqlite3/**"],
-    "files": ["electron/**/*", "lib/**/*", "public/**/*", "package.json"],
-    "extraResources": [
-      { "from": "build/stockridge", "to": "stockridge" },
-      { "from": "build/desktop-config.json", "to": "desktop-config.json" }
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**",
+      "**/node_modules/better-sqlite3-multiple-ciphers/**"
     ],
-    "directories": { "output": "dist", "buildResources": "build" },
-    "linux": { "target": ["AppImage"], "category": "Office" },
+    "files": [
+      "electron/**/*",
+      "lib/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/stockridge",
+        "to": "stockridge"
+      },
+      {
+        "from": "build/desktop-config.json",
+        "to": "desktop-config.json"
+      }
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office"
+    },
     "win": {
-      "target": ["portable", "zip"],
+      "target": [
+        "portable",
+        "zip"
+      ],
       "signAndEditExecutable": false
     },
-    "mac": { "target": ["zip", "dmg"], "category": "public.app-category.business" }
+    "mac": {
+      "target": [
+        "zip",
+        "dmg"
+      ],
+      "category": "public.app-category.business"
+    }
   }
 }

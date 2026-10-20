@@ -47,7 +47,10 @@ function desktopIndex(html) {
       /(<script src="\/js\/store\.js[^"]*"><\/script>)/,
       '$1\n<script src="/js/store-native.js"></script>',
     );
-  return injected.replace(
+  const withProduction = injected.includes('desktop-production.js')
+    ? injected
+    : injected.replace('</body>', '<script src="/js/desktop-production.js"></script>\n</body>');
+  return withProduction.replace(
     /if \('serviceWorker' in navigator\) \{[\s\S]*?\}\s*\n\s*<\/script>/,
     `if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function (regs) {
@@ -99,10 +102,14 @@ function bridgeScript() {
   return path.join(__dirname, '..', 'public', 'js', 'store-native.js');
 }
 
+function productionScript() {
+  return path.join(__dirname, '..', 'public', 'js', 'desktop-production.js');
+}
+
 function serveStatic(root, urlPath, res) {
   const pathname = urlPath.split('?')[0];
-  if (pathname === '/js/store-native.js') {
-    const bundled = bridgeScript();
+  if (pathname === '/js/store-native.js' || pathname === '/js/desktop-production.js') {
+    const bundled = pathname === '/js/store-native.js' ? bridgeScript() : productionScript();
     if (fs.existsSync(bundled)) {
       res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-store' });
       fs.createReadStream(bundled).pipe(res);

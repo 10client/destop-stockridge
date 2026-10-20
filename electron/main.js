@@ -2,10 +2,14 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const crypto = require('node:crypto');
+const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage } = require('electron');
 const { DeviceStore } = require('../lib/device-store');
 const { startServer } = require('./server');
 const { stockridgeRoot, workerOrigin } = require('./paths');
+const { startHub } = require('../lib/hub');
+const { listPrinters, printSlip } = require('./printer');
+const { checkForUpdate } = require('./updater');
 
 const METHODS = new Set([
   'putMany', 'all', 'get', 'remove', 'clearTable', 'clearAll', 'tableStats',
@@ -14,10 +18,45 @@ const METHODS = new Set([
   'metaGet', 'metaSet', 'metaAll',
   'logPut', 'logAll', 'logClear',
   'exportAll', 'importAll', 'info',
+  'reserve', 'reserveFromSale', 'reservedByProduct', 'dropReservation',
+  'rememberVerifier', 'checkVerifier',
 ]);
 
 let store = null;
 let server = null;
+let hub = null;
+
+function databaseKey() {
+  const file = path.join(app.getPath('userData'), 'stockridge.key');
+  if (fs.existsSync(file)) {
+    const buf = fs.readFileSync(file);
+    if (safeStorage.isEncryptionAvailable()) {
+      try { return safeStorage.decryptString(buf); } catch (err) { /* an older raw key falls through */ }
+    }
+    const text = buf.toString('utf8').trim();
+    if (/^[0-9a-f]{64}$/i.test(text)) return text;
+    throw new Error('This till\'s encryption key could not be read. Do not delete the database to get past this.');
+  }
+  const key = crypto.randomBytes(32).toString('hex');
+  const payload = safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(key) : Buffer.from(key, 'utf8');
+  fs.writeFileSync(file, payload, { mode: 0o600 });
+  return key;
+}
+
+function hubSecret() {
+  const existing = store.metaGet('hub_secret');
+  if (existing && String(existing).length >= 16) return String(existing);
+  const secret = crypto.randomBytes(24).toString('hex');
+  store.metaSet('hub_secret', secret);
+  return secret;
+}
+
+async function listenHub() {
+  if (hub) return hub;
+  hub = await startHub({ store, secret: hubSecret(), port: Number(process.env.STOCKRIDGE_HUB_PORT) || 47322 });
+  store.metaSet('hub_listen', true);
+  return hub;
+}
 
 function uiRoot() {
   return stockridgeRoot({
@@ -28,15 +67,18 @@ function uiRoot() {
   });
 }
 
-function bakedOrigin() {
-  if (!app.isPackaged) return null;
+function bakedConfig() {
+  if (!app.isPackaged) return {};
   try {
-    const file = path.join(process.resourcesPath, 'desktop-config.json');
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return parsed && parsed.origin ? String(parsed.origin) : null;
+    return JSON.parse(fs.readFileSync(path.join(process.resourcesPath, 'desktop-config.json'), 'utf8'));
   } catch (err) {
-    return null;
+    return {};
   }
+}
+
+function bakedOrigin() {
+  const parsed = bakedConfig();
+  return parsed && parsed.origin ? String(parsed.origin) : null;
 }
 
 function origin() {
@@ -84,7 +126,11 @@ async function boot() {
   }
   const dbFile = path.join(app.getPath('userData'), 'stockridge.db');
   fs.mkdirSync(path.dirname(dbFile), { recursive: true });
-  store = new DeviceStore(dbFile);
+  store = new DeviceStore(dbFile, { key: databaseKey() });
+  if (process.env.STOCKRIDGE_HUB && process.env.STOCKRIDGE_HUB_SECRET) {
+    store.metaSet('hub_peer', { url: process.env.STOCKRIDGE_HUB, secret: process.env.STOCKRIDGE_HUB_SECRET });
+  }
+  if (process.env.STOCKRIDGE_UPDATE_URL) store.metaSet('update_url', process.env.STOCKRIDGE_UPDATE_URL);
   const port = Number(process.env.STOCKRIDGE_PORT) || 47321;
   try {
     server = await startServer({ root: uiRoot(), origin: origin(), port });
@@ -100,14 +146,54 @@ async function boot() {
     if (!METHODS.has(method)) throw new Error('That store call is not allowed.');
     return store[method](...(payload.args || []));
   });
-  ipcMain.handle('desktop:info', () => Object.assign(store.info(), { origin: server.origin, ui: server.url }));
+  ipcMain.handle('desktop:info', () => Object.assign(store.info(), {
+    origin: server.origin,
+    ui: server.url,
+    hub: hub ? hub.url : null,
+  }));
   ipcMain.handle('desktop:backup', () => backup());
+  ipcMain.handle('printers:list', (event) => listPrinters(BrowserWindow.fromWebContents(event.sender)));
+  ipcMain.handle('printers:print', (_event, job) => printSlip(job || {}));
+  ipcMain.handle('hub:status', () => ({ listening: Boolean(hub), url: hub ? hub.url : null }));
+  ipcMain.handle('hub:reserve', async (_event, row) => {
+    const cfg = store.metaGet('hub_peer');
+    if (!cfg || !cfg.url || !cfg.secret) return { ok: false, skipped: true };
+    const res = await fetch(`${String(cfg.url).replace(/\/$/, '')}/hub/v1/reservations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-StockRidge-Hub': cfg.secret },
+      body: JSON.stringify(row || {}),
+    });
+    if (!res.ok) return { ok: false };
+    return res.json();
+  });
+  ipcMain.handle('hub:mirror', async () => {
+    const cfg = store.metaGet('hub_peer');
+    if (!cfg || !cfg.url || !cfg.secret) return null;
+    const res = await fetch(`${String(cfg.url).replace(/\/$/, '')}/hub/v1/mirror`, {
+      headers: { 'X-StockRidge-Hub': cfg.secret },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  });
+  ipcMain.handle('updates:check', async () => {
+    const url = process.env.STOCKRIDGE_UPDATE_URL || store.metaGet('update_url') || bakedConfig().updateUrl;
+    if (!url) return { ok: false, reason: 'no-url' };
+    return checkForUpdate(url);
+  });
 
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
       label: 'File',
       submenu: [
         { label: 'Save a copy of this till…', click: () => { backup().catch((err) => dialog.showErrorBox('Backup failed', err.message)); } },
+        { label: 'Start the LAN hub', click: () => { listenHub().then((started) => dialog.showMessageBox({ message: `Other tills can use ${started.url}`, detail: 'The shared secret is stored in this till. It is not written into a backup.' })).catch(() => {}); } },
+        { label: 'Check for a program update', click: () => {
+          const url = process.env.STOCKRIDGE_UPDATE_URL || store.metaGet('update_url') || bakedConfig().updateUrl;
+          checkForUpdate(url).then((result) => {
+            if (result && result.update) dialog.showMessageBox({ message: `Version ${result.version} is ready.`, detail: result.file });
+            else dialog.showMessageBox({ message: 'This till is already on the newest downloaded program.' });
+          }).catch((err) => dialog.showErrorBox('Update check failed', err.message));
+        } },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -117,6 +203,9 @@ async function boot() {
     { role: 'windowMenu' },
   ]));
 
+  if (store.metaGet('hub_listen') || process.env.STOCKRIDGE_HUB_LISTEN === '1') {
+    await listenHub();
+  }
   createWindow(server.url);
   app.on('second-instance', () => {
     const wins = BrowserWindow.getAllWindows();
@@ -130,6 +219,7 @@ app.whenReady().then(boot).catch((err) => {
 });
 
 app.on('window-all-closed', () => {
+  if (hub) hub.close();
   if (store) store.close();
   if (server) server.close();
   app.quit();

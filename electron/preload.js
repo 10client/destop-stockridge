@@ -11,6 +11,8 @@ const METHODS = [
   'metaGet', 'metaSet', 'metaAll',
   'logPut', 'logAll', 'logClear',
   'exportAll', 'importAll', 'info',
+  'reserve', 'reserveFromSale', 'reservedByProduct', 'dropReservation',
+  'rememberVerifier', 'checkVerifier',
 ];
 
 const store = { engine: 'sqlite' };
@@ -23,4 +25,16 @@ contextBridge.exposeInMainWorld('stockridgeNative', {
   store,
   backup: () => ipcRenderer.invoke('desktop:backup'),
   info: () => ipcRenderer.invoke('desktop:info'),
+  printers: {
+    list: () => ipcRenderer.invoke('printers:list'),
+    print: (job) => ipcRenderer.invoke('printers:print', job || {}),
+  },
+  hub: {
+    reserve: (row) => ipcRenderer.invoke('hub:reserve', row || {}),
+    mirror: () => ipcRenderer.invoke('hub:mirror'),
+    status: () => ipcRenderer.invoke('hub:status'),
+  },
+  updates: {
+    check: () => ipcRenderer.invoke('updates:check'),
+  },
 });

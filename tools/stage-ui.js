@@ -27,6 +27,8 @@ fs.rmSync(path.join(root, 'build', 'stockridge'), { recursive: true, force: true
 fs.mkdirSync(stage, { recursive: true });
 fs.cpSync(uiSource, stage, { recursive: true });
 fs.copyFileSync(iconSource, path.join(root, 'build', 'icon.png'));
-fs.writeFileSync(path.join(root, 'build', 'desktop-config.json'), JSON.stringify({ origin }, null, 2) + '\n');
+const config = { origin };
+if (process.env.STOCKRIDGE_UPDATE_URL) config.updateUrl = process.env.STOCKRIDGE_UPDATE_URL;
+fs.writeFileSync(path.join(root, 'build', 'desktop-config.json'), JSON.stringify(config, null, 2) + '\n');
 console.log(`Staged shop screens from ${uiSource}`);
 console.log(`This archive will sign in against ${origin}`);

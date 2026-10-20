@@ -60,10 +60,33 @@
     await open();
   }
 
+  function applyHolds(batches, holds) {
+    const left = Object.assign({}, holds || {});
+    return batches.map((row) => {
+      if (!row) return row;
+      const id = String(row.product_id || '');
+      const hold = Number(left[id] || 0);
+      if (!(hold > 0)) return row;
+      const qty = Number(row.quantity) || 0;
+      const reserved = Number(row.quantity_reserved || 0);
+      const take = Math.min(Math.max(0, qty - reserved), hold);
+      left[id] = hold - take;
+      if (!(take > 0)) return row;
+      return Object.assign({}, row, { quantity_reserved: reserved + take, hub_hold: take });
+    });
+  }
+
   async function all(table, opts) {
     await ready();
     const options = opts || {};
     let list = await native.all(table);
+    if (table === 'stock_batches' && native.reservedByProduct) {
+      const local = await native.reservedByProduct();
+      const remote = await native.metaGet('hub_reservations') || {};
+      const holds = Object.assign({}, remote);
+      for (const [id, qty] of Object.entries(local || {})) holds[id] = Number(holds[id] || 0) + Number(qty || 0);
+      list = applyHolds(list, holds);
+    }
     if (options.where) list = list.filter(options.where);
     if (options.orderBy && SR.util && SR.util.by) list.sort(SR.util.by(options.orderBy, options.dir || 1));
     if (options.limit) list = list.slice(0, options.limit);

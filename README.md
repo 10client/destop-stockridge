@@ -39,7 +39,19 @@ To archive the sample sign-in instead:
 STOCKRIDGE_ORIGIN=https://sample.stockridge.workers.dev npm run archive
 ```
 
-You cannot build a Windows program on a Mac, or a Mac program on Windows. Run the command on the kind of computer the shop will use. The Windows file is not code-signed. Signing is a later step. The archive skips the signing tools on purpose: those tools contain Mac shortcuts, and a normal Windows account cannot create them.
+You cannot build a Windows program on a Mac, or a Mac program on Windows. Run the command on the kind of computer the shop will use. The Windows file is not code-signed unless `CSC_LINK` points at your `.pfx` and `CSC_KEY_PASSWORD` is set. Without that certificate, Windows SmartScreen can warn, and the archive skips the signing tools on purpose.
+
+## Production till
+
+The database file is SQLCipher. The key is created on first launch and kept in the Windows credential store. A copied database file does not open on another computer. File → Save a copy of this till still writes an encrypted copy. Do not delete `stockridge.key`.
+
+Sign in once while the internet works. The till keeps a verifier, not the PIN. The same PIN then opens the saved session when the Worker cannot be reached. A person who has never signed in on this computer still needs the internet once.
+
+Other tills on the same shop network can use one computer as the LAN hub. On that computer, File → Start the LAN hub. On the others, set `STOCKRIDGE_HUB` to that address and `STOCKRIDGE_HUB_SECRET` to the secret stored on the hub. The hub shares the last mirror and the quantities already queued. It does not accept a sale in place of the Worker, and it does not hold a Turso token.
+
+A named Windows printer, or a network receipt printer on port 9100, is chosen in the printer prefs (`deviceName` or `host`). If that printer does not answer, the usual print window still opens. Cash-drawer kick is the ESC/POS pulse, only when `drawer` is set and `host` is set.
+
+Program updates are off until `STOCKRIDGE_UPDATE_URL` is set. `npm run publish-update` writes `dist/latest.json` with a hash. The till deletes a download that does not match. It does not replace the running program by itself.
 
 The database file lives in the operating system's app-data folder, named `stockridge.db`, in WAL mode. File → Save a copy of this till writes a backup. That file may be the only copy of sales that have not synced yet. The window always opens on `127.0.0.1:47321`, so a saved sign-in survives the next launch. Set `STOCKRIDGE_PORT` only if that port is already taken.
 

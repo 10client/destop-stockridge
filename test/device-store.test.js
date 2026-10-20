@@ -17,7 +17,7 @@ test('opens WAL, migrates once, and refuses a PIN hash', () => {
   const { store } = tempStore();
   const info = store.info();
   assert.equal(info.engine, 'sqlite');
-  assert.equal(info.migration, 1);
+  assert.equal(info.migration, 2);
   assert.equal(info.journal.toLowerCase(), 'wal');
   store.putMany('users', [{ id: 'u1', full_name: 'Ada', pin_hash: 'secret', updated_at: '2026-10-20 10:00:00' }]);
   const row = store.get('users', 'u1');
