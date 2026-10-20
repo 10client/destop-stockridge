@@ -40,6 +40,13 @@ function safeFile(root, urlPath) {
   return file;
 }
 
+function insertScript(html, src) {
+  if (html.includes(src)) return html;
+  const tag = `<script src="${src}"></script>`;
+  if (html.includes('</body>')) return html.replace('</body>', `${tag}\n</body>`);
+  return `${html}\n${tag}\n`;
+}
+
 function desktopIndex(html) {
   const injected = html.includes('store-native.js')
     ? html
@@ -47,9 +54,8 @@ function desktopIndex(html) {
       /(<script src="\/js\/store\.js[^"]*"><\/script>)/,
       '$1\n<script src="/js/store-native.js"></script>',
     );
-  const withProduction = injected.includes('desktop-production.js')
-    ? injected
-    : injected.replace('</body>', '<script src="/js/desktop-production.js"></script>\n</body>');
+  const withSave = insertScript(injected, '/js/save-status.js');
+  const withProduction = insertScript(withSave, '/js/desktop-production.js');
   return withProduction.replace(
     /if \('serviceWorker' in navigator\) \{[\s\S]*?\}\s*\n\s*<\/script>/,
     `if ('serviceWorker' in navigator) {
@@ -106,6 +112,10 @@ function productionScript() {
   return path.join(__dirname, '..', 'public', 'js', 'desktop-production.js');
 }
 
+function saveStatusScript() {
+  return path.join(__dirname, '..', 'public', 'js', 'save-status.js');
+}
+
 function serveStatic(root, urlPath, res, cacheRoot) {
   const pathname = urlPath.split('?')[0];
   if (pathname === '/sw.js') {
@@ -113,8 +123,10 @@ function serveStatic(root, urlPath, res, cacheRoot) {
     res.end('The desktop till does not use the service worker.');
     return;
   }
-  if (pathname === '/js/store-native.js' || pathname === '/js/desktop-production.js') {
-    const bundled = pathname === '/js/store-native.js' ? bridgeScript() : productionScript();
+  if (pathname === '/js/store-native.js' || pathname === '/js/desktop-production.js' || pathname === '/js/save-status.js') {
+    const bundled = pathname === '/js/store-native.js'
+      ? bridgeScript()
+      : (pathname === '/js/save-status.js' ? saveStatusScript() : productionScript());
     if (fs.existsSync(bundled)) {
       res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-store' });
       fs.createReadStream(bundled).pipe(res);

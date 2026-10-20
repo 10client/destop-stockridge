@@ -242,5 +242,146 @@
       wrappedPull.hubWrapped = true;
       SR.sync.pull = wrappedPull;
     }
+
+    installSaveIndicator(SR);
   });
+
+  function installSaveIndicator(SR) {
+    if (!document.getElementById('sr-save-style')) {
+      const style = document.createElement('style');
+      style.id = 'sr-save-style';
+      style.textContent = [
+        '#save-chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 20px; border: 1px solid var(--line-strong, #c9c3b8); background: var(--surface-2, #f4f1ea); font-size: .78rem; font-weight: 700; cursor: pointer; white-space: nowrap; }',
+        '#save-chip .net-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }',
+        '#save-chip[data-state="saved"] { background: #e7f6ee; border-color: #1f8a4c; color: #146c3a; }',
+        '#save-chip[data-state="saving"], #save-chip[data-state="waiting"] { background: #e8f1fb; border-color: #2f6fad; color: #1d4f82; }',
+        '#save-chip[data-state="held"], #save-chip[data-state="partial"], #save-chip[data-state="empty"] { background: #fff4df; border-color: #b7791f; color: #8a5a10; }',
+        '#save-chip[data-state="attention"] { background: #fde8e4; border-color: #c23a2a; color: #8d2418; }',
+        '#save-status-card { margin: 0 0 16px; border: 1px solid var(--line-strong, #c9c3b8); border-radius: 14px; background: var(--surface, #fff); }',
+        '#save-status-card .card-body { padding: 16px 18px; }',
+        '#save-status-card h2 { margin: 0 0 6px; font-size: 1.15rem; }',
+        '#save-status-card p { margin: 0; }',
+        '#save-status-card[data-state="saved"] { border-color: #1f8a4c; }',
+        '#save-status-card[data-state="attention"] { border-color: #c23a2a; }',
+      ].join('\n');
+      document.head.appendChild(style);
+    }
+    const net = document.getElementById('net-chip');
+    let chip = document.getElementById('save-chip');
+    if (net && !chip) {
+      chip = document.createElement('button');
+      chip.type = 'button';
+      chip.id = 'save-chip';
+      chip.className = 'chip chip-save';
+      chip.hidden = true;
+      chip.innerHTML = '<span class="net-dot" aria-hidden="true"></span><span id="save-chip-label">Checking…</span>';
+      net.insertAdjacentElement('afterend', chip);
+    }
+    if (chip && !chip.dataset.bound) {
+      chip.dataset.bound = '1';
+      chip.addEventListener('click', () => {
+        if (SR.app && SR.app.navigate) SR.app.navigate('/sync');
+      });
+    }
+    let painting = false;
+    let paintAgain = false;
+    function esc(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    async function paint() {
+      if (painting) { paintAgain = true; return; }
+      if (!SR.saveStatus || !SR.sync || !SR.store) return;
+      painting = true;
+      try {
+        const status = SR.sync.status();
+        const stats = await SR.sync.queueStats().catch(() => ({ pending: 0, failed: 0 }));
+        const lastPullAt = await SR.store.metaGet('last_pull_at').catch(() => null);
+        const truncated = await SR.store.metaGet('sync_truncated').catch(() => []);
+        const incomplete = await SR.store.metaGet('sync_incomplete_since').catch(() => null);
+        const stock = await SR.store.all('stock_batches').catch(() => []);
+        const products = await SR.store.all('products').catch(() => []);
+        const report = SR.saveStatus.decide({
+          running: status.running,
+          online: SR.api.isOnline(),
+          pending: stats.pending,
+          failed: stats.failed,
+          lastPullAt,
+          truncated,
+          incomplete,
+          stockRows: stock.length,
+          productRows: products.length,
+        });
+        const chip = document.getElementById('save-chip');
+        const label = document.getElementById('save-chip-label');
+        if (chip && label && SR.state && SR.state.user) {
+          chip.hidden = false;
+          chip.dataset.state = report.state;
+          label.textContent = report.label;
+          chip.title = report.detail;
+          chip.setAttribute('aria-label', report.label + '. ' + report.detail);
+        } else if (chip) {
+          chip.hidden = true;
+        }
+        paintPage(report, { lastPullAt, stock: stock.length, products: products.length, pending: stats.pending, failed: stats.failed });
+      } finally {
+        painting = false;
+        if (paintAgain) { paintAgain = false; paint(); }
+      }
+    }
+    function paintPage(report, counts) {
+      if (!location.pathname.startsWith('/sync')) return;
+      const view = document.getElementById('view');
+      if (!view) return;
+      const cards = document.querySelectorAll('[id="save-status-card"]');
+      let card = cards[0];
+      for (let i = 1; i < cards.length; i += 1) cards[i].remove();
+      if (!card) {
+        card = document.createElement('section');
+        card.id = 'save-status-card';
+        card.className = 'card';
+        view.prepend(card);
+      }
+      card.dataset.state = report.state;
+      const when = counts.lastPullAt ? String(counts.lastPullAt).replace('T', ' ').slice(0, 16) : 'not yet';
+      card.innerHTML = '<div class="card-body"><h2>' + esc(report.label) + '</h2><p>' + esc(report.detail) + '</p><p class="sub" style="margin-top:8px">Catalogue saved: ' + esc(when) + ' · ' + counts.products + ' products · ' + counts.stock + ' stock rows · ' + counts.pending + ' waiting · ' + counts.failed + ' refused</p></div>';
+    }
+    paint();
+    if (SR.sync.on) SR.sync.on('change', () => { paint(); });
+    if (SR.api.on) {
+      SR.api.on('net', () => { paint(); });
+      SR.api.on('queue', () => { paint(); });
+    }
+    if (SR.state && SR.state.on) {
+      SR.state.on('loaded', () => { paint(); });
+      SR.state.on('cleared', () => { paint(); });
+    }
+    if (!history.pushState.saveStatusWrapped) {
+      const push = history.pushState.bind(history);
+      const replace = history.replaceState.bind(history);
+      history.pushState = function () {
+        const out = push.apply(history, arguments);
+        setTimeout(paint, 80);
+        return out;
+      };
+      history.replaceState = function () {
+        const out = replace.apply(history, arguments);
+        setTimeout(paint, 80);
+        return out;
+      };
+      history.pushState.saveStatusWrapped = true;
+    }
+    const view = document.getElementById('view');
+    if (view && window.MutationObserver) {
+      const observer = new MutationObserver(() => {
+        if (location.pathname.startsWith('/sync') && !document.getElementById('save-status-card')) paint();
+      });
+      observer.observe(view, { childList: true });
+    }
+    setInterval(paint, 4000);
+    window.addEventListener('popstate', () => { setTimeout(paint, 50); });
+  }
 }(window));

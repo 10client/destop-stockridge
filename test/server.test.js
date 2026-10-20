@@ -12,6 +12,7 @@ test('index injection loads the SQLite bridge and does not register a service wo
   const html = '<script src="/js/store.js?v=1"></script>\n<script>\n  if (\'serviceWorker\' in navigator) {\n    window.addEventListener(\'load\', function () {\n      navigator.serviceWorker.register(\'/sw.js\', { scope: \'/\' }).catch(function () {});\n    });\n  }\n</script>\n';
   const out = desktopIndex(html);
   assert.match(out, /store-native\.js/);
+  assert.match(out, /save-status\.js[\s\S]*desktop-production\.js/);
   assert.doesNotMatch(out, /serviceWorker\.register/);
   assert.match(out, /unregister/);
 });
@@ -47,6 +48,9 @@ test('serves the UI from the checkout and proxies /api without accepting a path 
     assert.equal(escaped.status, 404);
     const health = await fetch(desktop.url + '__desktop/health');
     assert.equal((await health.json()).engine, 'sqlite');
+    const saveStatus = await fetch(desktop.url + 'js/save-status.js');
+    assert.equal(saveStatus.status, 200);
+    assert.match(await saveStatus.text(), /SR\.saveStatus/);
     const bridge = await fetch(desktop.url + 'js/store-native.js');
     const script = await bridge.text();
     assert.equal(bridge.status, 200);
