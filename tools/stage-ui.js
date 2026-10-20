@@ -6,7 +6,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { PRODUCTION_ORIGIN } = require('../electron/paths');
+const { SAMPLE_ORIGIN } = require('../electron/paths');
 
 const root = path.resolve(__dirname, '..');
 const uiSource = path.resolve(process.env.STOCKRIDGE_ROOT || path.join(root, '..', 'stockridge'), 'public');
