@@ -39,7 +39,7 @@ To archive the sample sign-in instead:
 STOCKRIDGE_ORIGIN=https://sample.stockridge.workers.dev npm run archive
 ```
 
-You cannot build a Windows program on a Mac, or a Mac program on Windows. Run the command on the kind of computer the shop will use.
+You cannot build a Windows program on a Mac, or a Mac program on Windows. Run the command on the kind of computer the shop will use. The Windows file is not code-signed. Signing is a later step. The archive skips the signing tools on purpose: those tools contain Mac shortcuts, and a normal Windows account cannot create them.
 
 The database file lives in the operating system's app-data folder, named `stockridge.db`, in WAL mode. File → Save a copy of this till writes a backup. That file may be the only copy of sales that have not synced yet. The window always opens on `127.0.0.1:47321`, so a saved sign-in survives the next launch. Set `STOCKRIDGE_PORT` only if that port is already taken.
 

@@ -36,7 +36,10 @@
     ],
     "directories": { "output": "dist", "buildResources": "build" },
     "linux": { "target": ["AppImage"], "category": "Office" },
-    "win": { "target": ["portable", "zip"] },
+    "win": {
+      "target": ["portable", "zip"],
+      "signAndEditExecutable": false
+    },
     "mac": { "target": ["zip", "dmg"], "category": "public.app-category.business" }
   }
 }
