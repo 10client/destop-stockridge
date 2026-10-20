@@ -1,0 +1,22 @@
+{
+  "name": "destop-stockridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StockRidge desktop shell. The web app stays the UI. SQLite replaces IndexedDB on this computer. Workers remains the sync gateway.",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "test": "node --test test/device-store.test.js test/server.test.js"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "@electron/rebuild": "^3.7.1"
+  }
+}
