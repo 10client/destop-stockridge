@@ -13,6 +13,7 @@ const { SAMPLE_ORIGIN } = require('./paths');
 const { listPrinters, printSlip } = require('./printer');
 const { checkForUpdate } = require('./updater');
 const { HIDE_INSTALL_CSS } = require('./hide-install');
+const { SHARED_DATABASE, PWA_ORIGIN, OFFICE_ORIGIN } = require('../lib/shared-books');
 
 const METHODS = new Set([
   'putMany', 'all', 'get', 'remove', 'clearTable', 'clearAll', 'tableStats',
@@ -265,8 +266,8 @@ async function boot() {
         { label: 'Which books is this?', click: () => {
           const stamp = readStamp(screenCacheDir());
           dialog.showMessageBox({
-            message: 'This till uses the same Turso books as the PWA.',
-            detail: `Worker: ${origin()}\nScreens: ${stamp && stamp.stamp ? stamp.stamp : 'the copy already on this computer'}\nThe Turso token stays on the Worker. It is not on this computer.`,
+            message: 'This till uses the same Turso books as the PWA and the Android app.',
+            detail: `Worker: ${origin()}\nSame books: ${PWA_ORIGIN} and ${OFFICE_ORIGIN}\nDatabase: ${SHARED_DATABASE}\nScreens: ${stamp && stamp.stamp ? stamp.stamp : 'the copy already on this computer'}\nThe Turso token stays on the Worker. It is not on this computer.`,
           });
         } },
         { label: 'Choose receipt printer', click: async () => {

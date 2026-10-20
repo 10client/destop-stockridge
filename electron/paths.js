@@ -1,9 +1,10 @@
 'use strict';
 
 const path = require('node:path');
+const { PWA_ORIGIN, OFFICE_ORIGIN } = require('../lib/shared-books');
 
-const SAMPLE_ORIGIN = 'https://sample.stockridge.workers.dev';
-const PRODUCTION_ORIGIN = 'https://stockridge.stockridge.workers.dev';
+const SAMPLE_ORIGIN = PWA_ORIGIN;
+const PRODUCTION_ORIGIN = OFFICE_ORIGIN;
 
 function stockridgeRoot({ envRoot, packaged, resourcesPath, dirname }) {
   if (envRoot) return path.resolve(envRoot);

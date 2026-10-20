@@ -2,8 +2,19 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
-const { stockridgeRoot, workerOrigin } = require('../electron/paths');
+const { stockridgeRoot, workerOrigin, SAMPLE_ORIGIN } = require('../electron/paths');
+const { PWA_ORIGIN, OFFICE_ORIGIN, SHARED_DATABASE } = require('../lib/shared-books');
+
+test('the PWA, the desktop till, and the Android app name the same database', () => {
+  const android = fs.readFileSync(path.join(__dirname, '..', 'android', 'app', 'src', 'main', 'res', 'values', 'strings.xml'), 'utf8');
+  assert.equal(SAMPLE_ORIGIN, PWA_ORIGIN);
+  assert.equal(OFFICE_ORIGIN, 'https://stockridge.stockridge.workers.dev');
+  assert.equal(SHARED_DATABASE, 'stockridge-10client.aws-eu-north-1.turso.io');
+  assert.match(android, new RegExp(PWA_ORIGIN.replace(/[.]/g, '\\.')));
+  assert.equal(workerOrigin({}), PWA_ORIGIN);
+});
 
 test('development reads the sibling checkout and the sample Worker', () => {
   const root = stockridgeRoot({ packaged: false, dirname: '/work/destop-stockridge/electron' });
