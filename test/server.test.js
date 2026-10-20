@@ -98,3 +98,37 @@ test('a closed shop port is an unreachable proxy response, not a successful logi
     await desktop.close();
   }
 });
+
+test('a closed shop answers the saved till instead of the proxy sentence', async () => {
+  const dead = http.createServer();
+  await new Promise((resolve) => dead.listen(0, '127.0.0.1', resolve));
+  const deadPort = dead.address().port;
+  await new Promise((resolve) => dead.close(resolve));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-door-'));
+  fs.mkdirSync(path.join(root, 'public'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'public', 'index.html'), '<head></head><body></body>');
+  const desktop = await startServer({
+    root,
+    origin: `http://127.0.0.1:${deadPort}`,
+    host: '127.0.0.1',
+    port: 0,
+    offlineDoor: () => ({
+      status: 200,
+      body: { ok: true, offline: true, user: { username: 'ada' }, profile: { username: 'ada' } },
+    }),
+  });
+  try {
+    const api = await fetch(desktop.url + 'api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'ada', pin: '2468' }),
+    });
+    const body = await api.json();
+    assert.equal(api.status, 200);
+    assert.equal(body.offline, true);
+    assert.equal(body.user.username, 'ada');
+    assert.doesNotMatch(JSON.stringify(body), /shop server could not be reached/i);
+  } finally {
+    await desktop.close();
+  }
+});

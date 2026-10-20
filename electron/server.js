@@ -105,7 +105,7 @@ function electronNet() {
   return electron.net;
 }
 
-function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port = 0 } = {}) {
+function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port = 0, offlineDoor = null } = {}) {
   if (!root) throw new Error('The desktop shell needs STOCKRIDGE_ROOT, the folder that contains public/.');
   if (!fs.existsSync(path.join(publicDir(root), 'index.html'))) {
     throw new Error(`No StockRidge UI at ${publicDir(root)}. Set STOCKRIDGE_ROOT to the checkout.`);
@@ -121,7 +121,7 @@ function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port 
       return;
     }
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-      proxy(req, res, target, transport, url);
+      proxy(req, res, target, transport, url, offlineDoor);
       return;
     }
     serveStatic(root, url.pathname, res, cacheRoot);
@@ -224,57 +224,91 @@ function forwardHeaders(raw, { host = null } = {}) {
   return headers;
 }
 
-function proxyNode(res, target, transport, url, method, headers, body) {
-  const upstream = transport.request({
-    protocol: target.protocol,
-    hostname: target.hostname,
-    port: target.port || (target.protocol === 'https:' ? 443 : 80),
-    method,
-    path: url.pathname + url.search,
-    headers,
-    timeout: 20000,
-  }, (pres) => {
-    const out = {};
-    for (const [key, value] of Object.entries(pres.headers)) {
-      if (HOP.has(key.toLowerCase())) continue;
-      out[key] = value;
-    }
-    res.writeHead(pres.statusCode || 502, out);
-    pres.pipe(res);
-  });
-  upstream.on('timeout', () => upstream.destroy(new Error('The Worker did not answer in time.')));
-  upstream.on('error', () => unreachable(res));
-  if (body && body.length) upstream.write(body);
-  upstream.end();
+const UPSTREAM_TIMEOUT_MS = 8000;
+
+function sendJson(res, status, body) {
+  if (res.headersSent) { res.end(); return; }
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(body || {}));
 }
 
-function proxy(req, res, target, transport, url) {
+function nodeUpstream(target, transport, url, method, headers, body) {
+  return new Promise((resolve, reject) => {
+    const upstream = transport.request({
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port || (target.protocol === 'https:' ? 443 : 80),
+      method,
+      path: url.pathname + url.search,
+      headers,
+      timeout: UPSTREAM_TIMEOUT_MS,
+    }, (pres) => {
+      const chunks = [];
+      pres.on('data', (chunk) => chunks.push(chunk));
+      pres.on('end', () => {
+        const out = {};
+        for (const [key, value] of Object.entries(pres.headers)) {
+          if (HOP.has(key.toLowerCase())) continue;
+          out[key] = value;
+        }
+        resolve({ status: pres.statusCode || 502, headers: out, body: Buffer.concat(chunks) });
+      });
+    });
+    upstream.on('timeout', () => upstream.destroy(new Error('The Worker did not answer in time.')));
+    upstream.on('error', reject);
+    if (body && body.length) upstream.write(body);
+    upstream.end();
+  });
+}
+
+function chromiumUpstream(net, target, url, method, headers, body) {
+  const init = {
+    method,
+    headers,
+    redirect: 'follow',
+  };
+  if (method !== 'GET' && method !== 'HEAD') init.body = new Uint8Array(body);
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    init.signal = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
+  }
+  return net.fetch(target.origin + url.pathname + url.search, init).then(async (response) => {
+    const buf = Buffer.from(await response.arrayBuffer());
+    const out = {};
+    response.headers.forEach((value, key) => {
+      if (!HOP.has(String(key).toLowerCase())) out[key] = value;
+    });
+    return { status: response.status, headers: out, body: buf };
+  });
+}
+
+function localDoor(offlineDoor, method, url, body) {
+  if (typeof offlineDoor !== 'function') return null;
+  try {
+    return offlineDoor({ method, pathname: url.pathname, body }) || null;
+  } catch (err) {
+    return { status: 503, body: { error: 'The saved till could not be opened.', code: 'SAVED_TILL_UNREADABLE' } };
+  }
+}
+
+function proxy(req, res, target, transport, url, offlineDoor) {
   const net = target.protocol === 'https:' ? electronNet() : null;
   readBody(req).then(async (body) => {
     const method = req.method || 'GET';
-    if (net) {
-      try {
-        const init = {
-          method,
-          headers: forwardHeaders(req.headers),
-          redirect: 'follow',
-        };
-        if (method !== 'GET' && method !== 'HEAD') init.body = new Uint8Array(body);
-        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-          init.signal = AbortSignal.timeout(20000);
-        }
-        const response = await net.fetch(target.origin + url.pathname + url.search, init);
-        const buf = Buffer.from(await response.arrayBuffer());
-        const out = {};
-        response.headers.forEach((value, key) => {
-          if (!HOP.has(String(key).toLowerCase())) out[key] = value;
-        });
-        res.writeHead(response.status, out);
-        res.end(buf);
+    try {
+      const upstream = net
+        ? await chromiumUpstream(net, target, url, method, forwardHeaders(req.headers), body)
+        : await nodeUpstream(target, transport, url, method, forwardHeaders(req.headers, { host: target.host }), body);
+      if (res.headersSent) return;
+      res.writeHead(upstream.status, upstream.headers);
+      res.end(upstream.body);
+    } catch (err) {
+      const local = localDoor(offlineDoor, method, url, body);
+      if (local && local.status) {
+        sendJson(res, local.status, local.body);
         return;
-      } catch (err) { /* Chromium could not reach it; Node gets one try */ }
+      }
+      unreachable(res);
     }
-    proxyNode(res, target, transport, url, method, forwardHeaders(req.headers, { host: target.host }), body);
   }).catch(() => unreachable(res));
 }
 

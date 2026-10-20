@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, session } = require('electron');
 const { DeviceStore } = require('../lib/device-store');
 const { startServer } = require('./server');
+const { answerWhenShopDown } = require('../lib/offline-door');
 const { stockridgeRoot, workerOrigin } = require('./paths');
 const { startHub } = require('../lib/hub');
 const { refreshScreens, readStamp } = require('../lib/screen-sync');
@@ -201,6 +202,7 @@ async function boot() {
       cacheRoot: screenCacheDir(),
       origin: origin(),
       port,
+      offlineDoor: (call) => answerWhenShopDown(store, call),
     });
   } catch (err) {
     if (err && err.code === 'EADDRINUSE') {
