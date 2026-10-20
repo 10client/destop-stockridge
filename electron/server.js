@@ -68,13 +68,36 @@ function desktopIndex(html) {
   ));
 }
 
+function chromiumTransport() {
+  let electron;
+  try { electron = require('electron'); } catch (err) { return null; }
+  if (!electron || !electron.net || typeof electron.net.request !== 'function') return null;
+  return {
+    request(options, callback) {
+      const port = options.port && Number(options.port) !== 443 && Number(options.port) !== 80
+        ? `:${options.port}` : '';
+      const client = electron.net.request({
+        method: options.method,
+        url: `${options.protocol}//${options.hostname}${port}${options.path}`,
+        redirect: 'follow',
+      });
+      for (const [key, value] of Object.entries(options.headers || {})) {
+        if (value == null) continue;
+        try { client.setHeader(key, value); } catch (err) { /* a hop header the stack rejects */ }
+      }
+      client.on('response', callback);
+      return client;
+    },
+  };
+}
+
 function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port = 0 } = {}) {
   if (!root) throw new Error('The desktop shell needs STOCKRIDGE_ROOT, the folder that contains public/.');
   if (!fs.existsSync(path.join(publicDir(root), 'index.html'))) {
     throw new Error(`No StockRidge UI at ${publicDir(root)}. Set STOCKRIDGE_ROOT to the checkout.`);
   }
   const target = new URL(origin || 'https://sample.stockridge.workers.dev');
-  const transport = target.protocol === 'http:' ? http : https;
+  const transport = target.protocol === 'http:' ? http : (chromiumTransport() || https);
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);

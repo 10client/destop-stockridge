@@ -98,6 +98,71 @@
     return global.SR && global.SR.state && global.SR.state.user;
   }
 
+  function shopUnreachable(err) {
+    if (!err) return false;
+    const payload = err.payload && typeof err.payload === 'object' ? err.payload : null;
+    const code = String(err.code || (payload && payload.code) || '');
+    if (code === 'UPSTREAM_UNREACHABLE' || code === 'OFFLINE') return true;
+    if (/shop server could not be reached/i.test(String(err.message || ''))) return true;
+    if (err.isOffline || err.retryable) return true;
+    const status = Number(err.status);
+    return status === 0 || status >= 500;
+  }
+
+  async function signInOffline(creds) {
+    const name = usernameOf(creds && creds.username);
+    const verified = await native.store.checkVerifier(name, creds && creds.pin);
+    if (!verified) {
+      throw new Error('The shop server could not be reached. This till has not signed that person in while online, or the PIN does not match. Connect once, then the same PIN opens the saved stock.');
+    }
+    const saved = (await readUsers())[name] || {};
+    const me = saved.me && saved.me.user ? saved.me : {
+      user: userFromProfile(verified, name),
+      scope: null,
+      settings: {},
+      featureLabels: {},
+      vertical: null,
+    };
+    await native.store.metaSet('me', me);
+    const token = tokenUsable(saved.token) ? saved.token : null;
+    if (token && global.SR && global.SR.api && global.SR.api.setToken) {
+      global.SR.api.setToken(token, { remember: true });
+    }
+    if (global.SR && global.SR.state) global.SR.state.user = me.user;
+    return {
+      ok: true,
+      offline: true,
+      token,
+      user: me.user,
+      profile: { fullName: me.user.fullName, username: me.user.username },
+    };
+  }
+
+  function installOfflineLogin() {
+    const SR = global.SR;
+    if (!SR || !SR.api || !SR.api.login || SR.api.login.offlineWrapped) return;
+    const online = SR.api.login.bind(SR.api);
+    async function login(creds) {
+      try {
+        const out = await online(creds);
+        await rememberOnline(creds, out);
+        return out;
+      } catch (err) {
+        if (!shopUnreachable(err)) throw err;
+        if (SR.api.emit) SR.api.emit('net', { online: false });
+        return signInOffline(creds);
+      }
+    }
+    login.offlineWrapped = true;
+    SR.api.login = login;
+  }
+
+  installOfflineLogin();
+  const loginWait = setInterval(() => {
+    installOfflineLogin();
+    if (global.SR && global.SR.api && global.SR.api.login && global.SR.api.login.offlineWrapped) clearInterval(loginWait);
+  }, 30);
+
   whenReady(() => {
     const SR = global.SR;
     const hint = document.getElementById('login-offline-hint');
@@ -106,54 +171,7 @@
     }
 
     if (SR.api.login && !SR.api.login.offlineWrapped) {
-      const online = SR.api.login.bind(SR.api);
-      async function login(creds) {
-        const name = usernameOf(creds && creds.username);
-        try {
-          const out = await online(creds);
-          await rememberOnline(creds, out);
-          return out;
-        } catch (err) {
-          const offline = err && (err.isOffline || err.retryable || err.status === 0 || err.status >= 500);
-          if (!offline) throw err;
-          const verified = await native.store.checkVerifier(name, creds && creds.pin);
-          if (!verified) {
-            throw new Error('This till has not signed that person in while online, or the PIN does not match the one saved on this computer. Connect once, then the same PIN works without the internet.');
-          }
-          const saved = (await readUsers())[name] || {};
-          const me = saved.me && saved.me.user ? saved.me : {
-            user: userFromProfile(verified, name),
-            scope: null,
-            settings: {},
-            featureLabels: {},
-            vertical: null,
-          };
-          await native.store.metaSet('me', me);
-          const token = tokenUsable(saved.token) ? saved.token : null;
-          if (token) SR.api.setToken(token, { remember: true });
-          SR.state.user = me.user;
-          if (!token) {
-            setTimeout(() => {
-              if (SR.ui && SR.ui.warn) SR.ui.warn('Signed in offline. The saved sign-in has expired, so these sales stay on this till until you sign in while connected.');
-            }, 700);
-          }
-          setTimeout(() => {
-            SR.store.all('stock_batches').then((rows) => {
-              if (rows && rows.length) return;
-              if (SR.ui && SR.ui.warn) SR.ui.warn('This till has no saved stock yet. Connect once and leave it open until the catalogue finishes saving.');
-            }).catch(() => {});
-          }, 400);
-          return {
-            ok: true,
-            offline: true,
-            token,
-            user: me.user,
-            profile: { fullName: me.user.fullName, username: me.user.username },
-          };
-        }
-      }
-      login.offlineWrapped = true;
-      SR.api.login = login;
+      installOfflineLogin();
     }
 
     if (SR.state.load && !SR.state.load.offlineWrapped) {
@@ -172,7 +190,7 @@
           return state;
         } catch (err) {
           if (err && err.isAuth) throw err;
-          if (!(err && (err.isOffline || err.retryable || err.status === 0))) throw err;
+          if (!shopUnreachable(err)) throw err;
           const mirrored = await SR.state.loadFromMirror();
           if (!mirrored) throw err;
           return mirrored;
