@@ -47,7 +47,7 @@ You cannot build a Windows program on a Mac, or a Mac program on Windows. Run th
 
 The database file is SQLCipher. The key is created on first launch and kept in the Windows credential store. A copied database file does not open on another computer. File → Save a copy of this till still writes an encrypted copy. Do not delete `stockridge.key`.
 
-Sign in once while the internet works. The till keeps a verifier, not the PIN. The same PIN then opens the saved session when the Worker cannot be reached. A person who has never signed in on this computer still needs the internet once.
+Sign in once while the internet works, and leave the window open until the catalogue finishes saving. The till keeps a verifier, not the PIN, and it keeps that person's session inside the encrypted SQLite file. The same PIN then opens the saved stock when the Worker cannot be reached, and a sale is queued there. When the line returns, that queue is sent and the latest stock is pulled back. A person who has never signed in on this computer still needs the internet once. A saved sign-in that has expired still opens the till, but those sales wait until the next connected sign-in.
 
 Other tills on the same shop network can use one computer as the LAN hub. On that computer, File → Start the LAN hub. On the others, set `STOCKRIDGE_HUB` to that address and `STOCKRIDGE_HUB_SECRET` to the secret stored on the hub. The hub shares the last mirror and the quantities already queued. It does not accept a sale in place of the Worker, and it does not hold a Turso token.
 

@@ -10,7 +10,7 @@ const { encode } = require('../lib/escpos');
 const { applyHolds } = require('../lib/stock-hold');
 const { startHub, SECRET_HEADER } = require('../lib/hub');
 const { isNewer, writeManifest, verifyFile } = require('../lib/updates');
-const { matches } = require('../lib/offline-auth');
+const { matches, tokenUsable, publicUser } = require('../lib/offline-auth');
 
 function tempStore(key) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-prod-'));
@@ -47,7 +47,7 @@ test('a plaintext till is rekeyed rather than left readable', () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('offline sign-in keeps a verifier and not the PIN', () => {
+test('a saved sign-in keeps a verifier and a token, and a backup keeps neither the PIN nor the token', () => {
   const { store } = tempStore();
   store.rememberVerifier('Ada', '48291', { id: 'u1', username: 'Ada', pin: '48291', pin_hash: 'nope' });
   const user = store.checkVerifier('ada', '48291');
@@ -55,8 +55,17 @@ test('offline sign-in keeps a verifier and not the PIN', () => {
   assert.equal(user.pin, undefined);
   assert.equal(user.pin_hash, undefined);
   assert.equal(store.checkVerifier('ada', '11111'), null);
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const live = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
+  const dead = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) - 3600 })).toString('base64url');
+  const token = `${header}.${live}.sig`;
+  store.metaSet('offline_users', { ada: { token, me: { user } } });
   const raw = JSON.stringify(store.exportAll());
   assert.equal(raw.includes('48291'), false);
+  assert.equal(raw.includes(token), false);
+  assert.equal(tokenUsable(token), true);
+  assert.equal(tokenUsable(`${header}.${dead}.sig`), false);
+  assert.equal(publicUser({ username: 'Ada', pin: '48291', token }).token, undefined);
   store.close();
 });
 
