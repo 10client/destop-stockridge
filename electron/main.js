@@ -186,7 +186,24 @@ async function boot() {
       label: 'File',
       submenu: [
         { label: 'Save a copy of this till…', click: () => { backup().catch((err) => dialog.showErrorBox('Backup failed', err.message)); } },
-        { label: 'Start the LAN hub', click: () => { listenHub().then((started) => dialog.showMessageBox({ message: `Other tills can use ${started.url}`, detail: 'The shared secret is stored in this till. It is not written into a backup.' })).catch(() => {}); } },
+        { label: 'Choose receipt printer', click: async () => {
+          const win = BrowserWindow.getAllWindows()[0];
+          const printers = await listPrinters(win);
+          if (!printers.length) {
+            dialog.showMessageBox({ message: 'Windows did not report a printer.' });
+            return;
+          }
+          const choice = await dialog.showMessageBox(win || undefined, {
+            message: 'Which printer should take the receipt?',
+            buttons: printers.map((item) => item.name).concat(['Cancel']),
+            cancelId: printers.length,
+          });
+          if (choice.response >= printers.length) return;
+          const current = store.metaGet('printer') || {};
+          store.metaSet('printer', Object.assign({}, current, { deviceName: printers[choice.response].name }));
+          if (win) win.reload();
+        } },
+        { label: 'Start the LAN hub', click: () => { listenHub().then((started) => dialog.showMessageBox({ message: `Other tills can use ${started.url}`, detail: 'The shared secret is stored in this till. It is not written into a backup. Set STOCKRIDGE_HUB and STOCKRIDGE_HUB_SECRET on the other tills.' })).catch(() => {}); } },
         { label: 'Check for a program update', click: () => {
           const url = process.env.STOCKRIDGE_UPDATE_URL || store.metaGet('update_url') || bakedConfig().updateUrl;
           checkForUpdate(url).then((result) => {
