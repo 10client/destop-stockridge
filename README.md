@@ -67,10 +67,10 @@ If Electron says it cannot open the native SQLite module, run `npm run rebuild` 
 - The first launch copies an existing IndexedDB mirror and outbox into SQLite, once.
 - The service worker is not used here. The file on disk is the cache.
 - A second window is refused, so two processes cannot write the same file.
-- Download and Install stay on the website. This window hides them. An Android WebView or Capacitor shell hides them the same way. A browser PWA still shows them.
+- Download and Install stay on the website. This window removes them, including when the hosted screens still contain the buttons. A browser PWA still shows them.
 
 ## What this is not
 
-Android is the same bridge, later: Capacitor plus a SQLite plugin that sets `window.stockridgeNative.store` to these methods. It is not in this folder. A Play Store build, code signing, and auto-update are not in this folder either.
+The Android app is `android/`. It is a WebView around the same Worker, and it removes Download and Install. Chrome on the phone does not. Change `android/app/src/main/res/values/strings.xml` to the client's Worker before building their APK. The demonstration address must not ship to a shop. Offline SQLite on Android, a Play Store listing, and a signed release are not in this folder yet.
 
 The till file is SQLCipher. The LAN hub, a named receipt printer, and a hash-checked program download are in this folder. None of them opens Turso. The books the PWA and this window share are the Turso database behind the Worker.

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StockRidge</string>
+    <!-- Replace this with the client's Worker before building their APK. -->
+    <string name="stockridge_origin">https://sample.stockridge.workers.dev</string>
+</resources>

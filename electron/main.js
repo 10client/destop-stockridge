@@ -3,7 +3,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
-const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, session } = require('electron');
 const { DeviceStore } = require('../lib/device-store');
 const { startServer } = require('./server');
 const { stockridgeRoot, workerOrigin } = require('./paths');
@@ -12,6 +12,7 @@ const { refreshScreens, readStamp } = require('../lib/screen-sync');
 const { SAMPLE_ORIGIN } = require('./paths');
 const { listPrinters, printSlip } = require('./printer');
 const { checkForUpdate } = require('./updater');
+const { HIDE_INSTALL_CSS } = require('./hide-install');
 
 const METHODS = new Set([
   'putMany', 'all', 'get', 'remove', 'clearTable', 'clearAll', 'tableStats',
@@ -100,12 +101,43 @@ async function matchPwaScreens() {
   return refreshed;
 }
 
+const STRIP_INSTALL = `(function () {
+  var ids = ['install-btn', 'nav-install', 'login-install'];
+  function strip() {
+    for (var i = 0; i < ids.length; i++) {
+      var el = document.getElementById(ids[i]);
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
+    var extra = document.querySelectorAll('.chip-install, .nav-install');
+    for (var j = 0; j < extra.length; j++) {
+      if (extra[j].parentNode) extra[j].parentNode.removeChild(extra[j]);
+    }
+  }
+  strip();
+  if (document.documentElement && !window.__srInstallStrip) {
+    window.__srInstallStrip = new MutationObserver(strip);
+    window.__srInstallStrip.observe(document.documentElement, { childList: true, subtree: true });
+  }
+})();`;
+
+function armInstallHide(win) {
+  const apply = () => {
+    if (win.isDestroyed()) return;
+    win.webContents.insertCSS(HIDE_INSTALL_CSS).catch(() => {});
+    win.webContents.executeJavaScript(STRIP_INSTALL, true).catch(() => {});
+  };
+  win.webContents.on('dom-ready', apply);
+  win.webContents.on('did-finish-load', apply);
+  win.webContents.on('did-navigate-in-page', apply);
+}
+
 function createWindow(url) {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 960,
     minHeight: 640,
+    show: false,
     title: 'StockRidge',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -114,6 +146,17 @@ function createWindow(url) {
       sandbox: true,
     },
   });
+  armInstallHide(win);
+  let shown = false;
+  const reveal = () => {
+    if (shown || win.isDestroyed()) return;
+    shown = true;
+    win.show();
+  };
+  win.webContents.on('dom-ready', () => {
+    win.webContents.insertCSS(HIDE_INSTALL_CSS).finally(reveal);
+  });
+  setTimeout(reveal, 3000);
   win.loadURL(url);
   return win;
 }
@@ -263,6 +306,7 @@ async function boot() {
   if (store.metaGet('hub_listen') || process.env.STOCKRIDGE_HUB_LISTEN === '1') {
     await listenHub();
   }
+  await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});
   const win = createWindow(server.url);
   if (screenNote) win.setTitle(`StockRidge · ${screenNote}`);
   app.on('second-instance', () => {

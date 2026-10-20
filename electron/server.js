@@ -6,6 +6,7 @@ const http = require('node:http');
 const https = require('node:https');
 const fs = require('node:fs');
 const path = require('node:path');
+const { hideInstallChrome } = require('./hide-install');
 
 const MIME = Object.freeze({
   '.html': 'text/html; charset=utf-8',
@@ -45,13 +46,6 @@ function insertScript(html, src) {
   const tag = `<script src="${src}"></script>`;
   if (html.includes('</body>')) return html.replace('</body>', `${tag}\n</body>`);
   return `${html}\n${tag}\n`;
-}
-
-function hideInstallChrome(html) {
-  if (html.includes('sr-native-install')) return html;
-  const style = '<style id="sr-native-install">#install-btn,#nav-install,#login-install{display:none!important}</style>';
-  if (html.includes('</head>')) return html.replace('</head>', `${style}\n</head>`);
-  return `${style}\n${html}`;
 }
 
 function desktopIndex(html) {
