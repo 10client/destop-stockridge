@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const { DeviceStore } = require('../lib/device-store');
 const { startServer } = require('./server');
+const { stockridgeRoot, workerOrigin } = require('./paths');
 
 const METHODS = new Set([
   'putMany', 'all', 'get', 'remove', 'clearTable', 'clearAll', 'tableStats',
@@ -18,13 +19,32 @@ const METHODS = new Set([
 let store = null;
 let server = null;
 
-function stockridgeRoot() {
-  if (process.env.STOCKRIDGE_ROOT) return path.resolve(process.env.STOCKRIDGE_ROOT);
-  return path.resolve(__dirname, '..', '..', 'stockridge');
+function uiRoot() {
+  return stockridgeRoot({
+    envRoot: process.env.STOCKRIDGE_ROOT,
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    dirname: __dirname,
+  });
+}
+
+function bakedOrigin() {
+  if (!app.isPackaged) return null;
+  try {
+    const file = path.join(process.resourcesPath, 'desktop-config.json');
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return parsed && parsed.origin ? String(parsed.origin) : null;
+  } catch (err) {
+    return null;
+  }
 }
 
 function origin() {
-  return process.env.STOCKRIDGE_ORIGIN || 'https://sample.stockridge.workers.dev';
+  return workerOrigin({
+    envOrigin: process.env.STOCKRIDGE_ORIGIN,
+    packaged: app.isPackaged,
+    bakedOrigin: bakedOrigin(),
+  });
 }
 
 function createWindow(url) {
@@ -67,7 +87,7 @@ async function boot() {
   store = new DeviceStore(dbFile);
   const port = Number(process.env.STOCKRIDGE_PORT) || 47321;
   try {
-    server = await startServer({ root: stockridgeRoot(), origin: origin(), port });
+    server = await startServer({ root: uiRoot(), origin: origin(), port });
   } catch (err) {
     if (err && err.code === 'EADDRINUSE') {
       throw new Error(`Port ${port} is already in use. Close the other StockRidge window, or set STOCKRIDGE_PORT.`);

@@ -2,12 +2,15 @@
   "name": "destop-stockridge",
   "version": "0.1.0",
   "private": true,
+  "author": "StockRidge",
   "description": "StockRidge desktop shell. The web app stays the UI. SQLite replaces IndexedDB on this computer. Workers remains the sync gateway.",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "test": "node --test test/device-store.test.js test/server.test.js"
+    "stage": "node tools/stage-ui.js",
+    "archive": "node tools/stage-ui.js && electron-builder",
+    "test": "node --test test/device-store.test.js test/server.test.js test/paths.test.js"
   },
   "engines": {
     "node": ">=20.11"
@@ -17,6 +20,23 @@
   },
   "devDependencies": {
     "electron": "^33.2.1",
-    "@electron/rebuild": "^3.7.1"
+    "@electron/rebuild": "^3.7.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.stockridge.desktop",
+    "productName": "StockRidge",
+    "artifactName": "StockRidge-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "asarUnpack": ["**/node_modules/better-sqlite3/**"],
+    "files": ["electron/**/*", "lib/**/*", "public/**/*", "package.json"],
+    "extraResources": [
+      { "from": "build/stockridge", "to": "stockridge" },
+      { "from": "build/desktop-config.json", "to": "desktop-config.json" }
+    ],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "linux": { "target": ["AppImage"], "category": "Office" },
+    "win": { "target": ["portable", "zip"] },
+    "mac": { "target": ["zip", "dmg"], "category": "public.app-category.business" }
   }
 }

@@ -19,7 +19,27 @@ npm start
 
 `npm start` opens the window. The UI is read from the StockRidge checkout next to this folder (`../stockridge`). Point elsewhere with `STOCKRIDGE_ROOT`.
 
-API calls go to `STOCKRIDGE_ORIGIN`. The default is the sample Worker, `https://sample.stockridge.workers.dev`. A client's own Worker URL replaces that. Do not put a Turso token in this app.
+API calls go to `STOCKRIDGE_ORIGIN`. The default for `npm start` is the sample Worker, `https://sample.stockridge.workers.dev`. A client's own Worker URL replaces that. Do not put a Turso token in this app.
+
+## Archive a standalone app
+
+`npm start` is the development window. It still needs the checkout beside this folder. The archive is the program you copy to a shop computer. It carries the shop screens inside it. It does not deploy the website.
+
+From this folder, after `npm install`:
+
+```
+npm run archive
+```
+
+That builds for the operating system you are on, and it signs in against production, `https://stockridge.stockridge.workers.dev`. The file lands in `dist/`.
+
+To archive the sample sign-in instead:
+
+```
+STOCKRIDGE_ORIGIN=https://sample.stockridge.workers.dev npm run archive
+```
+
+You cannot build a Windows program on a Mac, or a Mac program on Windows. Run the command on the kind of computer the shop will use.
 
 The database file lives in the operating system's app-data folder, named `stockridge.db`, in WAL mode. File → Save a copy of this till writes a backup. That file may be the only copy of sales that have not synced yet. The window always opens on `127.0.0.1:47321`, so a saved sign-in survives the next launch. Set `STOCKRIDGE_PORT` only if that port is already taken.
 
