@@ -11,9 +11,13 @@ function stockridgeRoot({ envRoot, packaged, resourcesPath, dirname }) {
   return path.resolve(dirname, '..', '..', 'stockridge');
 }
 
-function workerOrigin({ envOrigin, packaged, bakedOrigin }) {
+function workerOrigin({ envOrigin, bakedOrigin, savedOrigin }) {
   if (envOrigin) return envOrigin;
-  if (packaged) return bakedOrigin || PRODUCTION_ORIGIN;
+  // A client's own Worker is baked into that client's archive. The office
+  // production host is the 16 October copy on Cloudflare D1. It is not the
+  // Turso database behind the PWA, and it does not list water packing or bakery.
+  if (bakedOrigin && bakedOrigin !== PRODUCTION_ORIGIN) return bakedOrigin;
+  if (savedOrigin) return savedOrigin;
   return SAMPLE_ORIGIN;
 }
 

@@ -12,7 +12,7 @@ const root = path.resolve(__dirname, '..');
 const uiSource = path.resolve(process.env.STOCKRIDGE_ROOT || path.join(root, '..', 'stockridge'), 'public');
 const stage = path.join(root, 'build', 'stockridge', 'public');
 const iconSource = path.join(uiSource, 'icons', 'icon-512.png');
-const origin = process.env.STOCKRIDGE_ORIGIN || PRODUCTION_ORIGIN;
+const origin = process.env.STOCKRIDGE_ORIGIN || SAMPLE_ORIGIN;
 
 if (!fs.existsSync(path.join(uiSource, 'index.html'))) {
   console.error(`No shop screens at ${uiSource}. Clone stockridge next to destop-stockridge, then run this again.`);

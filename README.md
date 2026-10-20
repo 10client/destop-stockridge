@@ -19,7 +19,7 @@ npm start
 
 `npm start` opens the window. The UI is read from the StockRidge checkout next to this folder (`../stockridge`). Point elsewhere with `STOCKRIDGE_ROOT`.
 
-API calls go to `STOCKRIDGE_ORIGIN`. The default for `npm start` is the sample Worker, `https://sample.stockridge.workers.dev`. A client's own Worker URL replaces that. Do not put a Turso token in this app.
+API calls go to `STOCKRIDGE_ORIGIN`. The default is the sample Worker, `https://sample.stockridge.workers.dev`. That is the PWA, and that Worker is the door into Turso. Water packing, bakery and the other verticals come from that Worker, not from a second list inside Electron. On each launch the window copies the live PWA screens, so the two stay on the same version. A client's own Worker URL replaces the default. Do not put a Turso token in this app.
 
 ## Archive a standalone app
 
@@ -31,12 +31,14 @@ From this folder, after `npm install`:
 npm run archive
 ```
 
-That builds for the operating system you are on, and it signs in against production, `https://stockridge.stockridge.workers.dev`. The file lands in `dist/`.
+That builds for the operating system you are on. With no origin set, it signs in against the same Turso books as the PWA, `https://sample.stockridge.workers.dev`. The file lands in `dist/`.
 
-To archive the sample sign-in instead:
+The office host `https://stockridge.stockridge.workers.dev` is an older copy. It does not have water packing or bakery, and it is not the Turso database. Do not point a till at it.
+
+A later client's own Worker replaces the default:
 
 ```
-STOCKRIDGE_ORIGIN=https://sample.stockridge.workers.dev npm run archive
+STOCKRIDGE_ORIGIN=https://client.example.workers.dev npm run archive
 ```
 
 You cannot build a Windows program on a Mac, or a Mac program on Windows. Run the command on the kind of computer the shop will use. The Windows file is not code-signed unless `CSC_LINK` points at your `.pfx` and `CSC_KEY_PASSWORD` is set. Without that certificate, Windows SmartScreen can warn, and the archive skips the signing tools on purpose.
@@ -70,8 +72,4 @@ If Electron says it cannot open the native SQLite module, run `npm run rebuild` 
 
 Android is the same bridge, later: Capacitor plus a SQLite plugin that sets `window.stockridgeNative.store` to these methods. It is not in this folder. A Play Store build, code signing, and auto-update are not in this folder either.
 
-Printers, the cash drawer, and scanners still use the web paths. Native ESC/POS and vendor card SDKs are a separate piece of work.
-
-SQLCipher is not turned on. The file is local to this user account. Encrypting it is the next safety step, not a claim this build already makes.
-
-Several tills in one shop, with no internet, need one machine as a LAN hub. That is not this app. With internet, each till syncs through the Worker on its own.
+The till file is SQLCipher. The LAN hub, a named receipt printer, and a hash-checked program download are in this folder. None of them opens Turso. The books the PWA and this window share are the Turso database behind the Worker.

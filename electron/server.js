@@ -61,7 +61,7 @@ function desktopIndex(html) {
   );
 }
 
-function startServer({ root, origin, host = '127.0.0.1', port = 0 } = {}) {
+function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port = 0 } = {}) {
   if (!root) throw new Error('The desktop shell needs STOCKRIDGE_ROOT, the folder that contains public/.');
   if (!fs.existsSync(path.join(publicDir(root), 'index.html'))) {
     throw new Error(`No StockRidge UI at ${publicDir(root)}. Set STOCKRIDGE_ROOT to the checkout.`);
@@ -80,7 +80,7 @@ function startServer({ root, origin, host = '127.0.0.1', port = 0 } = {}) {
       proxy(req, res, target, transport, url);
       return;
     }
-    serveStatic(root, url.pathname, res);
+    serveStatic(root, url.pathname, res, cacheRoot);
   });
 
   return new Promise((resolve, reject) => {
@@ -106,8 +106,13 @@ function productionScript() {
   return path.join(__dirname, '..', 'public', 'js', 'desktop-production.js');
 }
 
-function serveStatic(root, urlPath, res) {
+function serveStatic(root, urlPath, res, cacheRoot) {
   const pathname = urlPath.split('?')[0];
+  if (pathname === '/sw.js') {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end('The desktop till does not use the service worker.');
+    return;
+  }
   if (pathname === '/js/store-native.js' || pathname === '/js/desktop-production.js') {
     const bundled = pathname === '/js/store-native.js' ? bridgeScript() : productionScript();
     if (fs.existsSync(bundled)) {
@@ -116,7 +121,9 @@ function serveStatic(root, urlPath, res) {
       return;
     }
   }
-  const file = safeFile(root, urlPath);
+  const cached = cacheRoot ? safeFile(cacheRoot, urlPath) : null;
+  const bundled = safeFile(root, urlPath);
+  const file = (cached && fs.existsSync(cached) && !fs.statSync(cached).isDirectory()) ? cached : bundled;
   if (!file) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end('Not found');

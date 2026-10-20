@@ -8,6 +8,8 @@ const { DeviceStore } = require('../lib/device-store');
 const { startServer } = require('./server');
 const { stockridgeRoot, workerOrigin } = require('./paths');
 const { startHub } = require('../lib/hub');
+const { refreshScreens, readStamp } = require('../lib/screen-sync');
+const { SAMPLE_ORIGIN } = require('./paths');
 const { listPrinters, printSlip } = require('./printer');
 const { checkForUpdate } = require('./updater');
 
@@ -81,12 +83,21 @@ function bakedOrigin() {
   return parsed && parsed.origin ? String(parsed.origin) : null;
 }
 
+function screenCacheDir() {
+  return path.join(app.getPath('userData'), 'screens');
+}
+
 function origin() {
   return workerOrigin({
     envOrigin: process.env.STOCKRIDGE_ORIGIN,
-    packaged: app.isPackaged,
     bakedOrigin: bakedOrigin(),
+    savedOrigin: null,
   });
+}
+
+async function matchPwaScreens() {
+  const refreshed = await refreshScreens({ origin: origin(), cacheDir: screenCacheDir() });
+  return refreshed;
 }
 
 function createWindow(url) {
@@ -132,8 +143,21 @@ async function boot() {
   }
   if (process.env.STOCKRIDGE_UPDATE_URL) store.metaSet('update_url', process.env.STOCKRIDGE_UPDATE_URL);
   const port = Number(process.env.STOCKRIDGE_PORT) || 47321;
+  let screenNote = null;
   try {
-    server = await startServer({ root: uiRoot(), origin: origin(), port });
+    const refreshed = await matchPwaScreens();
+    screenNote = refreshed.stamp || refreshed.origin;
+  } catch (err) {
+    const cached = readStamp(screenCacheDir());
+    screenNote = cached && cached.stamp ? cached.stamp : null;
+  }
+  try {
+    server = await startServer({
+      root: uiRoot(),
+      cacheRoot: screenCacheDir(),
+      origin: origin(),
+      port,
+    });
   } catch (err) {
     if (err && err.code === 'EADDRINUSE') {
       throw new Error(`Port ${port} is already in use. Close the other StockRidge window, or set STOCKRIDGE_PORT.`);
@@ -150,6 +174,8 @@ async function boot() {
     origin: server.origin,
     ui: server.url,
     hub: hub ? hub.url : null,
+    screens: readStamp(screenCacheDir()),
+    sameBooksAs: SAMPLE_ORIGIN,
   }));
   ipcMain.handle('desktop:backup', () => backup());
   ipcMain.handle('printers:list', (event) => listPrinters(BrowserWindow.fromWebContents(event.sender)));
@@ -186,6 +212,20 @@ async function boot() {
       label: 'File',
       submenu: [
         { label: 'Save a copy of this till…', click: () => { backup().catch((err) => dialog.showErrorBox('Backup failed', err.message)); } },
+        { label: 'Match the PWA screens', click: () => {
+          matchPwaScreens().then((refreshed) => {
+            const win = BrowserWindow.getAllWindows()[0];
+            if (win) win.reload();
+            dialog.showMessageBox({ message: 'This window is now on the same screens as the PWA.', detail: refreshed.stamp || refreshed.origin });
+          }).catch((err) => dialog.showErrorBox('The PWA screens could not be read', err.message));
+        } },
+        { label: 'Which books is this?', click: () => {
+          const stamp = readStamp(screenCacheDir());
+          dialog.showMessageBox({
+            message: 'This till uses the same Turso books as the PWA.',
+            detail: `Worker: ${origin()}\nScreens: ${stamp && stamp.stamp ? stamp.stamp : 'the copy already on this computer'}\nThe Turso token stays on the Worker. It is not on this computer.`,
+          });
+        } },
         { label: 'Choose receipt printer', click: async () => {
           const win = BrowserWindow.getAllWindows()[0];
           const printers = await listPrinters(win);
@@ -223,7 +263,8 @@ async function boot() {
   if (store.metaGet('hub_listen') || process.env.STOCKRIDGE_HUB_LISTEN === '1') {
     await listenHub();
   }
-  createWindow(server.url);
+  const win = createWindow(server.url);
+  if (screenNote) win.setTitle(`StockRidge · ${screenNote}`);
   app.on('second-instance', () => {
     const wins = BrowserWindow.getAllWindows();
     if (wins[0]) { if (wins[0].isMinimized()) wins[0].restore(); wins[0].focus(); }

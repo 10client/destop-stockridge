@@ -11,7 +11,7 @@ test('development reads the sibling checkout and the sample Worker', () => {
   assert.equal(workerOrigin({ packaged: false }), 'https://sample.stockridge.workers.dev');
 });
 
-test('an archive carries its own screens and uses the baked Worker address', () => {
+test('an archive carries its own screens, and the old office host is not the PWA books', () => {
   const root = stockridgeRoot({
     packaged: true,
     resourcesPath: '/app/resources',
@@ -21,7 +21,14 @@ test('an archive carries its own screens and uses the baked Worker address', () 
   assert.equal(workerOrigin({
     packaged: true,
     bakedOrigin: 'https://stockridge.stockridge.workers.dev',
-  }), 'https://stockridge.stockridge.workers.dev');
+  }), 'https://sample.stockridge.workers.dev');
+});
+
+test('a client Worker baked into the archive still wins', () => {
+  assert.equal(workerOrigin({
+    packaged: true,
+    bakedOrigin: 'https://northline.example.workers.dev',
+  }), 'https://northline.example.workers.dev');
 });
 
 test('an explicit origin wins over the archive default', () => {
