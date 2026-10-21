@@ -140,4 +140,4 @@ The browser outbox is `public/js/store.js`. The desktop till replaces it with `p
 | destop | `08d5fda` | Live token marks online; count sales saved on the till | No. The Offline symptom remained |
 | stockridge | `0112e15` | Retry the dashboard once; export `noteReachable` | No. The Offline symptom remained |
 
-The reachability rule in this file is the next commit after those. It is the one the rebuild must contain.
+The screen rule is stockridge `ca9b475`. The desktop rule is the commit that contains this file, which is after `08d5fda`. The rebuild must contain both. Do not rebuild from `08d5fda` or `0112e15` again.
