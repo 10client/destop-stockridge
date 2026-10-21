@@ -6,7 +6,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { startServer, desktopIndex, browserHeaders, electronLostDevice } = require('../electron/server');
+const { startServer, desktopIndex, browserHeaders, electronLostDevice, withBodyLength } = require('../electron/server');
 
 test('the shop request does not forward the local window address', () => {
   const headers = browserHeaders({
@@ -21,6 +21,13 @@ test('the shop request does not forward the local window address', () => {
   assert.equal(headers['content-length'], undefined);
   assert.equal(headers['content-type'], 'application/json');
   assert.equal(headers['x-device-id'], 'till-1');
+});
+
+test('a login body keeps its length so the shop can read the PIN', () => {
+  const body = Buffer.from('{"username":"ada","pin":"1234"}');
+  const headers = withBodyLength({ 'content-type': 'application/json' }, body);
+  assert.equal(headers['content-length'], String(body.length));
+  assert.equal(withBodyLength({ accept: 'application/json' }, Buffer.alloc(0))['content-length'], undefined);
 });
 
 test('a shop sign-out from the Chromium path is asked again when this till sent a device id', () => {

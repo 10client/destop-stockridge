@@ -22,6 +22,9 @@
   // while SQLite still has the id the shop already bound. A second id, or a
   // missing id, makes the shop say this computer was signed out.
   let pinnedDevice = null;
+  // A saved till is open because the shop login did not stick. A later refusal
+  // of the old token must not sign that till out or show the other-device notice.
+  let localSessionOnly = false;
   const deviceReady = (async function pinDevice() {
     let id = null;
     let label = 'Windows till';
@@ -85,12 +88,22 @@
         if (!res || res.status !== 401) return res;
         const copy = res.clone();
         const text = await copy.text().catch(() => '');
-        if (!text.includes('SESSION_SUPERSEDED')) return res;
-        const againId = deviceIdNow();
-        if (!againId) return res;
-        const retryHeaders = new Headers(headers);
-        retryHeaders.set('X-Device-Id', againId);
-        return origFetch(input, Object.assign({}, next, { headers: retryHeaders }));
+        let final = res;
+        if (text.includes('SESSION_SUPERSEDED')) {
+          const againId = deviceIdNow();
+          if (againId) {
+            const retryHeaders = new Headers(headers);
+            retryHeaders.set('X-Device-Id', againId);
+            final = await origFetch(input, Object.assign({}, next, { headers: retryHeaders }));
+          }
+        }
+        if (localSessionOnly && final && final.status === 401 && url.indexOf('/api/auth/login') === -1) {
+          return new Response(JSON.stringify({
+            error: 'The shop server could not be reached.',
+            code: 'UPSTREAM_UNREACHABLE',
+          }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+        }
+        return final;
       });
     };
   }
@@ -235,7 +248,7 @@
     const SR = global.SR;
     if (!SR || !SR.api || !SR.api.login || SR.api.login.offlineWrapped) return;
     const online = SR.api.login.bind(SR.api);
-    async function sessionStillHere(token) {
+    async function sessionHeld(token) {
       await deviceReady;
       const id = deviceIdNow();
       try {
@@ -248,29 +261,53 @@
           cache: 'no-store',
         });
         if (res.ok) return true;
-        const text = await res.text();
-        return !text.includes('SESSION_SUPERSEDED');
+        const text = await res.text().catch(() => '');
+        if (text.includes('SESSION_SUPERSEDED') || text.includes('SESSION_REVOKED') || text.includes('NO_TOKEN') || text.includes('BAD_TOKEN')) return false;
+        return null;
       } catch (err) {
-        return true;
+        return null;
       }
     }
-    async function login(creds) {
-      await deviceReady;
+    async function clearSavedToken(username) {
+      await writeUser(username, { token: null, expiresAt: 0 }).catch(() => {});
+    }
+    async function takeLive(creds) {
       try {
         let out = await online(creds);
+        if (!out || out.offline || !out.token) return null;
         await rememberOnline(creds, out);
-        // Sign-in just created this session. If the shop then says another
-        // device has it, take it back once. The PIN stays in this call only.
-        if (out && out.token && !out.offline && !(await sessionStillHere(out.token))) {
-          out = await online(creds);
-          await rememberOnline(creds, out);
-        }
+        if ((await sessionHeld(out.token)) !== false) return out;
+        out = await online(creds);
+        if (!out || out.offline || !out.token) return null;
+        await rememberOnline(creds, out);
         return out;
       } catch (err) {
         if (!shopUnreachable(err)) throw err;
-        if (SR.api.emit) SR.api.emit('net', { online: false });
-        return signInOffline(creds);
+        return null;
       }
+    }
+    async function login(creds) {
+      localSessionOnly = false;
+      await deviceReady;
+      const live = await takeLive(creds);
+      if (live) return live;
+      const offline = await signInOffline(creds);
+      // The saved token is not this sign-in. If the shop still accepts it,
+      // stay on that session. If the shop says it was replaced, sign in there
+      // instead of showing that notice over the saved till. The PIN stays in
+      // this call only.
+      const held = offline && offline.token ? await sessionHeld(offline.token) : null;
+      if (held === true) return Object.assign({}, offline, { offline: false });
+      if (held === false && offline && offline.token) {
+        if (SR.api.setToken) SR.api.setToken(null);
+        await clearSavedToken(creds && creds.username);
+        const again = await takeLive(creds);
+        if (again) return again;
+        offline.token = null;
+      }
+      localSessionOnly = true;
+      if (SR.api.emit) SR.api.emit('net', { online: false });
+      return offline;
     }
     login.offlineWrapped = true;
     SR.api.login = login;

@@ -233,6 +233,12 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body || {}));
 }
 
+function withBodyLength(headers, body) {
+  const next = Object.assign({}, headers || {});
+  if (body && body.length) next['content-length'] = String(body.length);
+  return next;
+}
+
 function nodeUpstream(target, transport, url, method, headers, body, { family = undefined, rejectUnauthorized = true } = {}) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -242,7 +248,7 @@ function nodeUpstream(target, transport, url, method, headers, body, { family = 
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       method,
       path: url.pathname + url.search,
-      headers: Object.assign({ 'user-agent': CHROME_UA }, headers || {}),
+      headers: withBodyLength(Object.assign({ 'user-agent': CHROME_UA }, headers || {}), body),
       timeout: 12000,
       rejectUnauthorized,
     };
@@ -293,7 +299,7 @@ function netUpstream(target, url, method, headers, body) {
       clearTimeout(timer);
       reject(err instanceof Error ? err : new Error('The shop server could not be reached.'));
     };
-    const headed = Object.assign({ 'user-agent': CHROME_UA }, headers || {});
+    const headed = withBodyLength(Object.assign({ 'user-agent': CHROME_UA }, headers || {}), body);
     for (const [key, value] of Object.entries(headed)) {
       if (value == null) continue;
       try { upstream.setHeader(key, String(value)); } catch (headerErr) { /* Chromium refuses a hop header */ }
@@ -387,4 +393,4 @@ function proxy(req, res, target, transport, url, offlineDoor) {
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength };
