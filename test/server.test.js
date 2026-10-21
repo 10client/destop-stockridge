@@ -28,6 +28,8 @@ test('index injection loads the SQLite bridge and does not register a service wo
   const out = desktopIndex(html, 'https://sample.stockridge.workers.dev');
   assert.match(out, /store-native\.js/);
   assert.match(out, /save-status\.js[\s\S]*desktop-production\.js/);
+  const beforeApp = desktopIndex('<script src="/js/store.js"></script>\n<script src="/js/app.js?v=1"></script>\n');
+  assert.match(beforeApp, /desktop-production\.js"><\/script>\s*<script src="\/js\/app\.js/);
   assert.match(out, /sr-native-install/);
   assert.match(out, /#install-btn,#nav-install,#login-install,\.chip-install,\.nav-install\{display:none!important\}/);
   const withButtons = '<head></head><body><button id="install-btn">Download</button><button id="nav-install">Install</button><button id="login-install">Download onto this device</button><button class="chip" id="install-btn" type="button">\n  <span>Download</span>\n</button></body>';

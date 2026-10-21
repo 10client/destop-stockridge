@@ -62,7 +62,16 @@ function desktopIndex(html) {
       '$1\n<script src="/js/store-native.js"></script>',
     );
   const withSave = insertScript(injected, '/js/save-status.js');
-  const withProduction = insertScript(withSave, '/js/desktop-production.js');
+  // Before app.js, so the till id is pinned before the first sign-in check.
+  // A page with no app.js (the injection test) still gets the script at the end.
+  const withProduction = withSave.includes('/js/desktop-production.js')
+    ? withSave
+    : (/<script src="\/js\/app\.js/.test(withSave)
+      ? withSave.replace(
+        /(<script src="\/js\/app\.js[^"]*"><\/script>)/,
+        '<script src="/js/desktop-production.js"></script>\n$1',
+      )
+      : insertScript(withSave, '/js/desktop-production.js'));
   return hideInstallChrome(withProduction.replace(
     /if \('serviceWorker' in navigator\) \{[\s\S]*?\}\s*\n\s*<\/script>/,
     `if ('serviceWorker' in navigator) {

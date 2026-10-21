@@ -18,6 +18,72 @@
     else setTimeout(() => whenReady(fn), 30);
   }
 
+  // One till, one device id. localStorage can be empty on a new window origin
+  // while SQLite still has the id the shop already bound. A second id, or a
+  // missing id, makes the shop say this computer was signed out.
+  let pinnedDevice = null;
+  const deviceReady = (async function pinDevice() {
+    let id = null;
+    let label = 'Windows till';
+    // The open session was bound to the id this window already sent, which
+    // lives in localStorage. Keep that. SQLite is only the fallback when the
+    // window has no id yet, so a new origin does not invent a second one.
+    try {
+      const ls = localStorage.getItem('sr.deviceId');
+      if (ls && ls !== 'SR-UNKNOWN') id = ls;
+    } catch (err) { /* SQLite is the copy that survives */ }
+    if (!id) {
+      try { id = await native.store.metaGet('device_id'); } catch (err) { id = null; }
+    }
+    try {
+      const savedLabel = await native.store.metaGet('device_label');
+      if (savedLabel) label = String(savedLabel);
+    } catch (err) { /* the id is what the shop checks */ }
+    if (!id || id === 'SR-UNKNOWN') {
+      const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+      const block = (n) => Array.from({ length: n }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+      id = `SR-${block(4)}-${block(4)}`;
+    }
+    pinnedDevice = { id: String(id), label };
+    try {
+      localStorage.setItem('sr.deviceId', pinnedDevice.id);
+      localStorage.setItem('sr.deviceLabel', pinnedDevice.label);
+    } catch (err) { /* the shop still gets the header below */ }
+    try {
+      await native.store.metaSet('device_id', pinnedDevice.id);
+      await native.store.metaSet('device_label', pinnedDevice.label);
+    } catch (err) { /* localStorage still holds it for this window */ }
+    return pinnedDevice;
+  })();
+  const SRDevice = global.SR = global.SR || {};
+  SRDevice.device = SRDevice.device || {};
+  SRDevice.device.current = () => pinnedDevice || { id: deviceIdNow() || 'SR-UNKNOWN', label: 'Windows till' };
+  SRDevice.device.get = () => deviceReady;
+
+  function deviceIdNow() {
+    if (pinnedDevice && pinnedDevice.id) return pinnedDevice.id;
+    try {
+      const ls = localStorage.getItem('sr.deviceId');
+      if (ls && ls !== 'SR-UNKNOWN') return ls;
+    } catch (err) { /* not ready yet */ }
+    return '';
+  }
+
+  if (global.fetch && !global.__srDeviceFetch) {
+    global.__srDeviceFetch = true;
+    const origFetch = global.fetch.bind(global);
+    global.fetch = function (input, init) {
+      const url = String((input && input.url) || input || '');
+      const localApi = url.indexOf('/api/') !== -1;
+      if (!localApi) return origFetch(input, init);
+      const id = deviceIdNow();
+      const headers = new Headers((init && init.headers) || {});
+      if (id) headers.set('X-Device-Id', id);
+      else headers.delete('X-Device-Id');
+      return origFetch(input, Object.assign({}, init || {}, { headers }));
+    };
+  }
+
   function saleLines(record) {
     const lines = record && record.payload && record.payload.lines;
     if (!Array.isArray(lines)) return [];
@@ -159,6 +225,7 @@
     if (!SR || !SR.api || !SR.api.login || SR.api.login.offlineWrapped) return;
     const online = SR.api.login.bind(SR.api);
     async function login(creds) {
+      await deviceReady;
       try {
         const out = await online(creds);
         await rememberOnline(creds, out);
