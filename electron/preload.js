@@ -39,7 +39,7 @@ const METHODS = [
   'logPut', 'logAll', 'logClear',
   'exportAll', 'importAll', 'info',
   'reserve', 'reserveFromSale', 'reservedByProduct', 'dropReservation',
-  'rememberVerifier', 'checkVerifier', 'hasVerifier',
+  'rememberVerifier', 'checkVerifier', 'hasVerifier', 'listVerifiers',
 ];
 
 const store = { engine: 'sqlite' };

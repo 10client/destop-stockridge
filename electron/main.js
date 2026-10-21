@@ -24,7 +24,7 @@ const METHODS = new Set([
   'logPut', 'logAll', 'logClear',
   'exportAll', 'importAll', 'info',
   'reserve', 'reserveFromSale', 'reservedByProduct', 'dropReservation',
-  'rememberVerifier', 'checkVerifier', 'hasVerifier',
+  'rememberVerifier', 'checkVerifier', 'hasVerifier', 'listVerifiers',
 ]);
 
 let store = null;
@@ -235,6 +235,10 @@ async function boot() {
       origin: origin(),
       port,
       offlineDoor: (call) => answerWhenShopDown(store, call),
+      onAcceptedLogin: (accepted) => {
+        if (!store || !accepted) return;
+        store.saveAcceptedLogin(accepted.username, accepted.pin, accepted.profile, accepted.token, accepted.scope);
+      },
     });
   } catch (err) {
     if (err && err.code === 'EADDRINUSE') {

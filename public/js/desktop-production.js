@@ -102,6 +102,7 @@
       if (id) headers.set('X-Device-Id', id);
       else headers.delete('X-Device-Id');
       const next = Object.assign({}, init || {}, { headers });
+      const isLogin = String(url).indexOf('/api/auth/login') !== -1;
       return origFetch(target, next).then(async (res) => {
         if (!res || res.status !== 401) return res;
         const copy = res.clone();
@@ -115,11 +116,16 @@
             final = await origFetch(target, Object.assign({}, next, { headers: retryHeaders }));
           }
         }
-        if (localSessionOnly && final && final.status === 401 && url.indexOf('/api/auth/login') === -1) {
+        if (localSessionOnly && final && final.status === 401 && !isLogin) {
           return shopMissResponse();
         }
         return final;
-      }).catch(() => shopMissResponse());
+      }).catch((err) => {
+        // A login must reach the proxy. A fake miss here means a new person is
+        // never stored, and the screen then says the shop did not answer.
+        if (isLogin) throw err;
+        return shopMissResponse();
+      });
     };
   }
 
@@ -203,11 +209,22 @@
     if (!name || !creds || creds.pin == null || creds.pin === '' || !out || !out.token) return;
     const profile = out.profile || out.user || { username: name };
     await native.store.rememberVerifier(name, creds.pin, profile);
-    await writeUser(name, {
+    const existing = (await readUsers())[name] || {};
+    const patch = {
       token: out.token,
       expiresAt: tokenExpiryMs(out.token),
       profile,
-    });
+    };
+    if (!existing.me) {
+      patch.me = {
+        user: userFromProfile(profile, name),
+        scope: out.scope || null,
+        settings: {},
+        featureLabels: {},
+        vertical: null,
+      };
+    }
+    await writeUser(name, patch);
   }
 
   async function persistMirror(username) {
@@ -246,11 +263,19 @@
     if (!verified && known) {
       throw new Error('That PIN does not match the sign-in saved on this till.');
     }
+    if (!verified && !known) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      try {
+        if (native.store.checkVerifier) verified = await native.store.checkVerifier(name, pin);
+      } catch (err) { verified = verified || null; }
+    }
     const saved = (await readUsers())[name] || {};
     const cachedMe = await native.store.metaGet('me');
     const savedName = cachedMe && cachedMe.user ? usernameOf(cachedMe.user.username) : '';
     if (!verified && savedName !== name && !(saved.me && saved.me.user && usernameOf(saved.me.user.username) === name)) {
-      throw new Error('The shop did not answer from this window. Try the same username and PIN again.');
+      const missed = new Error('This person has not signed in on this till while the shop answered. Sign in once while the shop answers, and this till will remember them. The PIN is not stored.');
+      missed.code = 'OFFLINE_UNKNOWN_USER';
+      throw missed;
     }
     let me = saved.me && saved.me.user ? saved.me : null;
     if (!me && savedName === name && cachedMe && cachedMe.user) me = cachedMe;
@@ -265,8 +290,8 @@
     }
     await native.store.metaSet('me', me);
     const token = tokenUsable(saved.token) ? saved.token : null;
-    if (token && global.SR && global.SR.api && global.SR.api.setToken) {
-      global.SR.api.setToken(token, { remember: true });
+    if (global.SR && global.SR.api && global.SR.api.setToken) {
+      global.SR.api.setToken(token || null, { remember: Boolean(token) });
     }
     if (global.SR && global.SR.state) global.SR.state.user = me.user;
     return {
@@ -281,7 +306,6 @@
   function installOfflineLogin() {
     const SR = global.SR;
     if (!SR || !SR.api || !SR.api.login || SR.api.login.offlineWrapped) return;
-    const online = SR.api.login.bind(SR.api);
     async function sessionHeld(token) {
       await deviceReady;
       const id = deviceIdNow();
@@ -305,13 +329,61 @@
     async function clearSavedToken(username) {
       await writeUser(username, { token: null, expiresAt: 0 }).catch(() => {});
     }
+    async function askShop(creds) {
+      const id = deviceIdNow();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 40000);
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            ...(id ? { 'X-Device-Id': id } : {}),
+          },
+          body: JSON.stringify({
+            username: creds && creds.username,
+            pin: creds && creds.pin,
+            remember: !creds || creds.remember !== false,
+            deviceId: id || undefined,
+          }),
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        const text = await res.text();
+        let body = {};
+        try { body = text ? JSON.parse(text) : {}; } catch (err) { body = {}; }
+        if (!res.ok) {
+          const err = new Error((body && body.error) || 'Sign-in failed.');
+          err.status = res.status;
+          err.code = (body && body.code) || `HTTP_${res.status}`;
+          err.payload = body;
+          err.isOffline = res.status >= 500 || err.code === 'OFFLINE' || err.code === 'UPSTREAM_UNREACHABLE'
+            || /shop server could not be reached|did not answer from this window|failed to fetch/i.test(err.message);
+          throw err;
+        }
+        if (body.token && SR.api.setToken) SR.api.setToken(body.token, { remember: !creds || creds.remember !== false });
+        return body;
+      } catch (err) {
+        if (err && err.code) throw err;
+        const wrapped = new Error(err && err.name === 'AbortError'
+          ? 'The server did not answer in time. Check the connection and try again.'
+          : 'The shop did not answer from this window. Try again.');
+        wrapped.code = 'OFFLINE';
+        wrapped.isOffline = true;
+        wrapped.status = 0;
+        throw wrapped;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
     async function takeLive(creds) {
       try {
-        let out = await online(creds);
+        let out = await askShop(creds);
         if (!out || out.offline || !out.token) return null;
         await rememberOnline(creds, out);
         if ((await sessionHeld(out.token)) !== false) return out;
-        out = await online(creds);
+        out = await askShop(creds);
         if (!out || out.offline || !out.token) return null;
         await rememberOnline(creds, out);
         return out;
@@ -358,7 +430,15 @@
     const SR = global.SR;
     const hint = document.getElementById('login-offline-hint');
     if (hint) {
-      hint.textContent = 'You are offline. Enter the same username and PIN you used on this till while connected. The PIN is not stored. Sales use the stock already saved here, and they sync when the line returns.';
+      const saved = native.store.listVerifiers ? native.store.listVerifiers() : Promise.resolve([]);
+      Promise.resolve(saved).then((names) => {
+        const people = Array.isArray(names) ? names.filter(Boolean) : [];
+        hint.textContent = people.length
+          ? `People saved on this till: ${people.join(', ')}. Each can sign in here when the shop does not answer. The PIN is not stored. A new person is saved the first time the shop accepts them.`
+          : 'Sign in once while the shop answers. This till then remembers that person, and they can sign in again when the shop does not answer. The PIN is not stored.';
+      }).catch(() => {
+        hint.textContent = 'Sign in once while the shop answers. This till then remembers that person, and they can sign in again when the shop does not answer. The PIN is not stored.';
+      });
     }
 
     if (SR.api.login && !SR.api.login.offlineWrapped) {

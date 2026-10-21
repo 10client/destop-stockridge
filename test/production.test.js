@@ -69,6 +69,26 @@ test('a saved sign-in keeps a verifier and a token, and a backup keeps neither t
   store.close();
 });
 
+test('two people stay saved, either PIN still checks, and neither PIN is stored', () => {
+  const { store, dir } = tempStore();
+  store.saveAcceptedLogin('Ada', '48291', { id: 'u1', username: 'Ada', pin: '48291', pin_hash: 'nope' }, 'ada-token', null);
+  store.saveAcceptedLogin('Bola', '13579', { id: 'u2', username: 'Bola', fullName: 'Bola Ade', pin: '13579' }, 'bola-token', { branchId: 'b1' });
+  assert.equal(store.checkVerifier('ada', '48291').username, 'Ada');
+  assert.equal(store.checkVerifier('bola', '13579').fullName, 'Bola Ade');
+  assert.equal(store.checkVerifier('bola', '48291'), null);
+  assert.deepEqual(store.listVerifiers(), ['ada', 'bola']);
+  const saved = store.metaGet('offline_users');
+  assert.equal(saved.ada.token, 'ada-token');
+  assert.equal(saved.bola.token, 'bola-token');
+  assert.equal(saved.bola.me.user.username, 'Bola');
+  const raw = JSON.stringify(store.exportAll()) + JSON.stringify(saved) + JSON.stringify(store.checkVerifier('bola', '13579'));
+  assert.equal(raw.includes('48291'), false);
+  assert.equal(raw.includes('13579'), false);
+  assert.equal(raw.includes('pin_hash'), false);
+  store.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('a queued sale holds stock and a sync releases it', () => {
   const { store } = tempStore();
   store.reserveFromSale({

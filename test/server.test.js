@@ -6,7 +6,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { startServer, desktopIndex, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile } = require('../electron/server');
+const { startServer, desktopIndex, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin } = require('../electron/server');
 
 test('the shop request does not forward the local window address', () => {
   const headers = browserHeaders({
@@ -21,6 +21,24 @@ test('the shop request does not forward the local window address', () => {
   assert.equal(headers['content-length'], undefined);
   assert.equal(headers['content-type'], 'application/json');
   assert.equal(headers['x-device-id'], 'till-1');
+});
+
+test('a login answer is a shop token or a PIN refusal, not an HTML block', () => {
+  const token = loginAnswer({ status: 200, body: Buffer.from('{"token":"abc","profile":{"username":"bola"}}') });
+  assert.equal(token.status, 200);
+  assert.equal(loginAnswer({ status: 403, body: Buffer.from('<html>error code: 1010</html>') }), null);
+  assert.equal(loginAnswer({ status: 401, body: Buffer.from('{"code":"BAD_CREDENTIALS","error":"Username or PIN is incorrect."}') }).status, 401);
+  assert.equal(loginAnswer({ status: 200, body: Buffer.from('{"ok":true}') }), null);
+  const accepted = acceptedLogin(
+    Buffer.from('{"username":"Bola","pin":"13579"}'),
+    { status: 200, body: Buffer.from('{"token":"abc","profile":{"username":"Bola","pin":"13579"}}') },
+  );
+  assert.equal(accepted.username, 'bola');
+  assert.equal(accepted.pin, '13579');
+  assert.equal(acceptedLogin(Buffer.from('{"username":"Bola","pin":"13579"}'), { status: 401, body: Buffer.from('{"code":"BAD_CREDENTIALS"}') }), null);
+  const source = fs.readFileSync(path.join(__dirname, '../electron/server.js'), 'utf8');
+  assert.doesNotMatch(source, /sr-shop-direct/);
+  assert.doesNotMatch(source, /Promise\.any/);
 });
 
 test('a decoded shop answer is not labelled gzip, which the window reports as Failed to fetch', () => {
@@ -122,6 +140,65 @@ test('serves the UI from the checkout and proxies /api without accepting a path 
   } finally {
     await desktop.close();
     await new Promise((resolve) => upstream.close(resolve));
+  }
+});
+
+test('a shop login stores that person without storing the PIN or wiping another person', async () => {
+  const upstream = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      const sent = JSON.parse(raw || '{}');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true,
+        token: `token-${sent.username}`,
+        profile: { id: 'u2', username: sent.username, fullName: 'Bola Ade', pin: sent.pin },
+        scope: { branchId: 'b1' },
+      }));
+    });
+  });
+  await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  const upPort = upstream.address().port;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-login-'));
+  fs.mkdirSync(path.join(root, 'public'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'public', 'index.html'), '<head></head><body></body>');
+  const people = {
+    ada: { username: 'ada', token: 'ada-token' },
+  };
+  let desktop;
+  try {
+    desktop = await startServer({
+      root,
+      origin: `http://127.0.0.1:${upPort}`,
+      host: '127.0.0.1',
+      port: 0,
+      onAcceptedLogin: (accepted) => {
+        const profile = Object.assign({}, accepted.profile || {});
+        delete profile.pin;
+        delete profile.pin_hash;
+        people[accepted.username] = { username: accepted.username, token: accepted.token, profile, scope: accepted.scope };
+      },
+    });
+    const api = await fetch(desktop.url + 'api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'Bola', pin: '13579' }),
+    });
+    const body = await api.json();
+    assert.equal(api.status, 200);
+    assert.equal(body.token, 'token-Bola');
+    assert.equal(people.bola.profile.fullName, 'Bola Ade');
+    assert.equal(people.bola.profile.pin, undefined);
+    assert.equal(people.ada.token, 'ada-token');
+    assert.equal(people.bola.scope.branchId, 'b1');
+    const kept = JSON.stringify(people);
+    assert.equal(kept.includes('13579'), false);
+    assert.equal(kept.includes('48291'), false);
+  } finally {
+    if (desktop) await desktop.close();
+    await new Promise((resolve) => upstream.close(resolve));
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 

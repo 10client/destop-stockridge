@@ -49,6 +49,38 @@ test('a dead shop opens the saved till and does not repeat the proxy sentence', 
   assert.equal(stranger, null);
 });
 
+test('a second saved person can sign in when the shop is down, even if someone else was last', () => {
+  const store = {
+    checkVerifier(username, pin) {
+      if (username === 'bola' && pin === '1357') return { username: 'bola', fullName: 'Bola' };
+      return null;
+    },
+    hasVerifier(username) { return username === 'ada' || username === 'bola'; },
+    metaGet(key) {
+      if (key === 'me') return { user: { username: 'ada', fullName: 'Ada', role: 'STAFF' }, settings: {} };
+      if (key === 'offline_users') return { bola: { me: { user: { username: 'bola', fullName: 'Bola' } } } };
+      return null;
+    },
+    all() { return []; },
+  };
+  const out = answerWhenShopDown(store, {
+    method: 'POST',
+    pathname: '/api/auth/login',
+    body: JSON.stringify({ username: 'Bola', pin: '1357' }),
+  });
+  assert.equal(out.status, 200);
+  assert.equal(out.body.offline, true);
+  assert.equal(out.body.user.username, 'bola');
+  assert.equal(out.body.user.fullName, 'Bola');
+  const wrong = answerWhenShopDown(store, {
+    method: 'POST',
+    pathname: '/api/auth/login',
+    body: JSON.stringify({ username: 'bola', pin: '0000' }),
+  });
+  assert.equal(wrong.status, 401);
+  assert.equal(wrong.body.code, 'BAD_CREDENTIALS');
+});
+
 test('a till that signed in before PIN checks existed still opens that saved person', () => {
   const store = storeFor(false);
   store.hasVerifier = () => false;

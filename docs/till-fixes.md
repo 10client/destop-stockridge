@@ -20,6 +20,10 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 7. Do not store the PIN. Do not set `webSecurity` to false. Do not call `rekey` while opening the till file.
 
+8. Save every person the shop accepts on this till. Do not keep only the last person. Do not invent a person the shop has never accepted here. Offline sign-in checks any saved person, not only the last one.
+
+9. A login must get a real shop answer before the window gives up. Do not turn that call into a fake miss. Do not race the window against the Worker. One login request at a time, so the same account is not signed out of itself.
+
 ## What happened, in order
 
 ### Failed to fetch, first time
@@ -52,8 +56,15 @@ Sign-in worked. The next screen said **That failed. Failed to fetch.** Chromium'
 
 Fix: the proxy labels the body it actually sends. A shipped screen file wins over the cache. A window call aimed at the Worker is turned back into `/api/...`. The browser sentence is not shown.
 
+### A different person, then "try the same username and PIN again"
+
+A different username showed **The shop did not answer from this window. Try the same username and PIN again.** The till already keeps one check per username. It refused to use that unless the person was the last one saved, and it only saved someone after the window read a shop login. The window gave up while the proxy was still asking, and any failed login fetch was turned into a fake miss. The last saved person could still open the till. A different person had no check yet, so they were refused before they could be saved.
+
+Fix: a login waits for a real shop answer, and a path that returns HTML or a block is not treated as that answer. When the shop accepts a person, that person is saved before the window reads the answer. Other saved people stay saved. Either saved person can sign in when the shop is down. The PIN is not stored. A person the shop has never accepted on this till is not invented.
+
 ## Before the next change
 
 - If the screen says **Failed to fetch** or **That failed.**, the window called the wrong host, or the proxy mislabelled the body. Do not add a direct Worker fetch to "fix" it.
 - If the screen says the account is on another device right after sign-in on this till, check the device id and the old token. Do not allow two live sessions to silence it.
 - If a rebuild does not change what the window runs, the screen cache is hiding the shipped file. The shipped file must win.
+- If a different person sees the shop-did-not-answer sentence, they have not been saved on this till yet. Save them when the shop accepts them. Do not keep only the last person, and do not store the PIN to skip the shop.

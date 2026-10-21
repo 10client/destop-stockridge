@@ -108,7 +108,7 @@ function browserHeaders(raw) {
   return headers;
 }
 
-function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port = 0, offlineDoor = null } = {}) {
+function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port = 0, offlineDoor = null, onAcceptedLogin = null } = {}) {
   if (!root) throw new Error('The desktop shell needs STOCKRIDGE_ROOT, the folder that contains public/.');
   if (!fs.existsSync(path.join(publicDir(root), 'index.html'))) {
     throw new Error(`No StockRidge UI at ${publicDir(root)}. Set STOCKRIDGE_ROOT to the checkout.`);
@@ -124,7 +124,7 @@ function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port 
       return;
     }
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-      proxy(req, res, target, transport, url, offlineDoor);
+      proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin);
       return;
     }
     serveStatic(root, url.pathname, res, cacheRoot, target.origin);
@@ -274,7 +274,7 @@ function chooseStaticFile(bundledExists, cachedExists) {
   return null;
 }
 
-function nodeUpstream(target, transport, url, method, headers, body, { family = undefined, rejectUnauthorized = true } = {}) {
+function nodeUpstream(target, transport, url, method, headers, body, { family = undefined, rejectUnauthorized = true, timeout = 12000 } = {}) {
   return new Promise((resolve, reject) => {
     const options = {
       protocol: target.protocol,
@@ -284,7 +284,7 @@ function nodeUpstream(target, transport, url, method, headers, body, { family = 
       method,
       path: url.pathname + url.search,
       headers: withBodyLength(Object.assign({ 'user-agent': CHROME_UA }, headers || {}), body),
-      timeout: 12000,
+      timeout,
       rejectUnauthorized,
     };
     if (family) options.family = family;
@@ -311,7 +311,7 @@ function nodeUpstream(target, transport, url, method, headers, body, { family = 
   });
 }
 
-function netUpstream(target, url, method, headers, body) {
+function netUpstream(target, url, method, headers, body, { timeout = 12000 } = {}) {
   const electron = electronNet();
   if (!electron) return Promise.reject(new Error('Chromium network is not available.'));
   return new Promise((resolve, reject) => {
@@ -329,7 +329,7 @@ function netUpstream(target, url, method, headers, body) {
     const timer = setTimeout(() => {
       try { upstream.abort(); } catch (abortErr) { /* already finished */ }
       reject(new Error('The Worker did not answer in time.'));
-    }, 12000);
+    }, timeout);
     const fail = (err) => {
       clearTimeout(timer);
       reject(err instanceof Error ? err : new Error('The shop server could not be reached.'));
@@ -381,36 +381,113 @@ function electronLostDevice(upstream, deviceId) {
   return responseText(upstream).includes('SESSION_SUPERSEDED');
 }
 
-function proxy(req, res, target, transport, url, offlineDoor) {
+// A Cloudflare block or an HTML page is not a login. A token is. A PIN
+// refusal is. Anything else is a path that did not answer, so the next path
+// may still store this person.
+function loginAnswer(upstream) {
+  if (!upstream || upstream.status == null) return null;
+  const status = Number(upstream.status);
+  const text = responseText(upstream);
+  if (status === 200) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && parsed.token && !parsed.offline) return upstream;
+    } catch (err) { /* not a shop login */ }
+    return null;
+  }
+  if (status === 400 || status === 401 || status === 429) {
+    if (/BAD_CREDENTIALS|BAD_REQUEST|ACCOUNT_DEACTIVATED|ACCOUNT_UNAVAILABLE|LOGIN_LOCKED|Username or PIN/i.test(text)) return upstream;
+  }
+  return null;
+}
+
+function acceptedLogin(requestBody, upstream) {
+  if (!upstream || Number(upstream.status) !== 200) return null;
+  let sent;
+  let got;
+  try {
+    sent = JSON.parse(Buffer.isBuffer(requestBody) ? requestBody.toString('utf8') : String(requestBody || ''));
+    got = JSON.parse(responseText(upstream));
+  } catch (err) {
+    return null;
+  }
+  if (!got || got.offline || !got.token) return null;
+  const username = sent && sent.username;
+  const pin = sent && sent.pin;
+  if (!username || pin == null || pin === '') return null;
+  return {
+    username: String(username).trim().toLowerCase(),
+    pin: String(pin),
+    profile: got.profile || got.user || { username },
+    token: got.token,
+    scope: got.scope || null,
+  };
+}
+
+// One login request at a time. Two parallel logins would sign the same account
+// out of itself. This is not the window calling the Worker. A path that does
+// not return a real login answer is not kept, or a new person is never stored.
+async function loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body) {
+  const tries = [];
+  if (target.protocol === 'https:' && electronNet()) {
+    tries.push(() => netUpstream(target, url, method, pageHeaders, body, { timeout: 10000 }));
+  }
+  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: 10000 }));
+  if (target.protocol === 'https:') {
+    tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, {
+      family: 4,
+      rejectUnauthorized: false,
+      timeout: 8000,
+    }));
+  }
+  for (const attempt of tries) {
+    try {
+      const upstream = loginAnswer(await attempt());
+      if (upstream) return upstream;
+    } catch (err) { /* this path did not answer a login */ }
+  }
+  return null;
+}
+
+function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin) {
   readBody(req).then(async (body) => {
     const method = req.method || 'GET';
     const pageHeaders = browserHeaders(req.headers);
     const deviceId = pageHeaders['x-device-id'] || '';
-    let upstream = null;
-    if (target.protocol === 'https:' && electronNet()) {
-      try {
-        upstream = await netUpstream(target, url, method, pageHeaders, body);
-      } catch (err) {
-        upstream = null;
-      }
-    }
-    if (electronLostDevice(upstream, deviceId)) upstream = null;
     const nodeHeaders = forwardHeaders(req.headers, { host: target.host });
     nodeHeaders['user-agent'] = CHROME_UA;
     if (deviceId) nodeHeaders['x-device-id'] = deviceId;
-    const nodeTries = [
-      () => nodeUpstream(target, transport, url, method, nodeHeaders, body),
-      () => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4 }),
-    ];
-    if (target.protocol === 'https:') {
-      nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { rejectUnauthorized: false }));
-    }
-    for (const attempt of nodeTries) {
-      if (upstream) break;
-      try {
-        upstream = await attempt();
-      } catch (err) {
-        upstream = null;
+    const login = method === 'POST' && url.pathname === '/api/auth/login';
+    let upstream = null;
+    if (login) {
+      upstream = await loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body);
+      const accepted = acceptedLogin(body, upstream);
+      if (accepted && typeof onAcceptedLogin === 'function') {
+        try { onAcceptedLogin(accepted); } catch (err) { /* the shop already accepted this person */ }
+      }
+    } else {
+      if (target.protocol === 'https:' && electronNet()) {
+        try {
+          upstream = await netUpstream(target, url, method, pageHeaders, body);
+        } catch (err) {
+          upstream = null;
+        }
+      }
+      if (electronLostDevice(upstream, deviceId)) upstream = null;
+      const nodeTries = [
+        () => nodeUpstream(target, transport, url, method, nodeHeaders, body),
+        () => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4 }),
+      ];
+      if (target.protocol === 'https:') {
+        nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { rejectUnauthorized: false }));
+      }
+      for (const attempt of nodeTries) {
+        if (upstream) break;
+        try {
+          upstream = await attempt();
+        } catch (err) {
+          upstream = null;
+        }
       }
     }
     if (upstream) {
@@ -428,4 +505,4 @@ function proxy(req, res, target, transport, url, offlineDoor) {
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin };
