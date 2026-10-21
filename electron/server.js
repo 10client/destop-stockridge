@@ -475,6 +475,17 @@ async function loginUpstream(target, transport, url, method, pageHeaders, nodeHe
   return null;
 }
 
+// A health check is how the till decides it is online. Give that one path long
+// enough for a slow shop to answer. A normal screen read stays short so the
+// window is not still waiting when it gives up and paints Offline.
+function readBudgets(pathname) {
+  const pathName = String(pathname || '');
+  if (pathName === '/api/health' || pathName === '/api/health/ping') {
+    return { net: 12000, node: 10000, v4: 0, insecure: 0 };
+  }
+  return { net: 5000, node: 5000, v4: 4000, insecure: 4000 };
+}
+
 function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin) {
   readBody(req).then(async (body) => {
     const method = req.method || 'GET';
@@ -495,20 +506,20 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin) {
       // A read must answer before the window's 20 second wait. Login is allowed
       // longer. If this read is still trying when the window gives up, a
       // connected sign-in is painted as offline.
-      if (target.protocol === 'https:' && electronNet()) {
+      const budget = readBudgets(url.pathname);
+      if (target.protocol === 'https:' && electronNet() && budget.net) {
         try {
-          upstream = await netUpstream(target, url, method, pageHeaders, body, { timeout: 5000 });
+          upstream = await netUpstream(target, url, method, pageHeaders, body, { timeout: budget.net });
         } catch (err) {
           upstream = null;
         }
       }
       if (electronLostDevice(upstream, deviceId)) upstream = null;
-      const nodeTries = [
-        () => nodeUpstream(target, transport, url, method, nodeHeaders, body, { timeout: 5000 }),
-        () => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: 4000 }),
-      ];
-      if (target.protocol === 'https:') {
-        nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { rejectUnauthorized: false, timeout: 4000 }));
+      const nodeTries = [];
+      if (budget.node) nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { timeout: budget.node }));
+      if (budget.v4) nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: budget.v4 }));
+      if (target.protocol === 'https:' && budget.insecure) {
+        nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { rejectUnauthorized: false, timeout: budget.insecure }));
       }
       for (const attempt of nodeTries) {
         if (upstream) break;
@@ -535,4 +546,4 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin) {
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets };

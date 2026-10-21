@@ -28,6 +28,8 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 11. A connected sign-in is online. Do not paint the offline dashboard because one read gave up before the shop answered. A sale made while the shop is down is saved on this till and counted there. It uploads when the line returns.
 
+12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence. Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
+
 ## What happened, in order
 
 ### Failed to fetch, first time
@@ -80,6 +82,18 @@ Sign-in reached the shop. The dashboard still said **Offline — these figures a
 
 Fix: a shop read answers before that wait. If the first read misses and the shop still answers, read it again before painting the saved figures. A live sign-in marks the till online. A sale the shop did not take is saved here and counted. It uploads when the line returns.
 
+### Still Offline while the person is online
+
+That last fix was not enough. The till still showed Offline after a connected sign-in. Three signals were each allowed to flip the whole till:
+
+- The browser `offline` event, and `navigator.onLine === false`. Electron can report no network while the shop on this computer's proxy is answering.
+- One missed `/api/` call. The window wrapper turned that throw, and a saved-session 401, into `502` `OFFLINE`. The screen then treated the shop as down.
+- A probe of `/api/health/ping` that only ran after the chip was already Offline. The live shop answers 404 on that path. A 404 is the shop speaking. A proxy 502 is not.
+
+Fix: a shop answer is the only online signal. Ask `/api/health` and retry the screen before painting Offline. Two probe misses are required. A 401 is kept as a 401. The dashboard does not show the Offline banner while the chip says the shop answered. The longer wait is only for that health check, so a slow shop is not called down. A sale the shop did not take is still saved on this till.
+
+This is not confirmed until the unpacked program built from the commit that contains this rule is the program they open.
+
 ## Before the next change
 
 - If the screen says **Failed to fetch** or **That failed.**, the window called the wrong host, or the proxy mislabelled the body. Do not add a direct Worker fetch to "fix" it.
@@ -88,4 +102,4 @@ Fix: a shop read answers before that wait. If the first read misses and the shop
 - If a different person sees the shop-did-not-answer sentence, they have not been saved on this till yet. Save them when the shop accepts them. Do not keep only the last person, and do not store the PIN to skip the shop.
 - If a connected sign-in says the saved sign-in has expired, the shop answer was not read. Do not open the expired saved till while the shop is up.
 - If the build says the output file is locked, do not wait on the portable exe. Build the unpacked program and open `dist\win-unpacked\StockRidge.exe`.
-- If a connected sign-in shows the offline dashboard, the read gave up too soon. Do not leave that banner up when the shop answers. A sale made while the shop is down must stay saved on this till.
+- If a connected sign-in shows the offline dashboard, the read gave up too soon, or a browser offline flag was treated as the shop. Do not leave that banner up when the shop answers. Do not flip the chip from one miss. A sale made while the shop is down must stay saved on this till.

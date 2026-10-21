@@ -116,15 +116,23 @@
             final = await origFetch(target, Object.assign({}, next, { headers: retryHeaders }));
           }
         }
-        if (localSessionOnly && final && final.status === 401 && !isLogin) {
-          return shopMissResponse();
-        }
+        // A 401 is the shop answering. Do not rewrite it as a miss. That made a
+        // connected till say Offline. A saved session is kept by ignoring the
+        // sign-out event, not by pretending the shop is down.
         return final;
-      }).catch((err) => {
+      }).catch(async (err) => {
         // A login must reach the proxy. A fake miss here means a new person is
         // never stored, and the screen then says the shop did not answer.
         if (isLogin) throw err;
-        return shopMissResponse();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 12000);
+        try {
+          return await origFetch(target, Object.assign({}, next, { signal: controller.signal }));
+        } catch (again) {
+          return shopMissResponse();
+        } finally {
+          clearTimeout(timer);
+        }
       });
     };
   }
@@ -394,10 +402,11 @@
     }
     async function shopAnswers() {
       try {
-        const res = await fetch('/api/health/ping', { method: 'GET', cache: 'no-store' });
+        const res = await fetch('/api/health', { method: 'GET', cache: 'no-store' });
         const text = await res.text().catch(() => '');
-        if (res.status >= 500 || /UPSTREAM_UNREACHABLE|shop server could not be reached|did not answer/i.test(text)) return false;
-        return res.status > 0 && res.status < 500;
+        if (global.SRReach && global.SRReach.shopAnswered) return global.SRReach.shopAnswered(res.status, text);
+        return res.status > 0 && res.status < 500
+          && !/UPSTREAM_UNREACHABLE|shop server could not be reached|did not answer/i.test(text);
       } catch (err) {
         return false;
       }
@@ -424,16 +433,26 @@
       // instead of showing that notice over the saved till. The PIN stays in
       // this call only.
       const held = offline && offline.token ? await sessionHeld(offline.token) : null;
-      if (held === true) return Object.assign({}, offline, { offline: false });
+      if (held === true) {
+        localSessionOnly = false;
+        if (SR.api.noteReachable) SR.api.noteReachable(true);
+        return Object.assign({}, offline, { offline: false });
+      }
       if (held === false && offline && offline.token) {
         if (SR.api.setToken) SR.api.setToken(null);
         await clearSavedToken(creds && creds.username);
         const again = await takeLive(creds);
-        if (again) return again;
+        if (again) {
+          localSessionOnly = false;
+          if (SR.api.noteReachable) SR.api.noteReachable(true);
+          return again;
+        }
         offline.token = null;
       }
       localSessionOnly = true;
-      if (SR.api.emit) SR.api.emit('net', { online: false });
+      // Do not force the chip to Offline. A browser miss is not the shop.
+      // The probe moves the chip only after the shop has missed twice.
+      if (SR.api.probe) SR.api.probe({ force: true }).catch(() => {});
       return offline;
     }
     login.offlineWrapped = true;
@@ -448,6 +467,17 @@
 
   whenReady(() => {
     patchErrorBlock();
+    if (global.SR && global.SR.api && global.SR.api.emit && !global.SR.api.emit.desktopWrapped) {
+      const emit = global.SR.api.emit.bind(global.SR.api);
+      function wrappedEmit(event, detail) {
+        // The shop answered with a rejected old token. Keep the saved till open.
+        // Do not turn that answer into Offline.
+        if (localSessionOnly && event === 'auth') return;
+        return emit(event, detail);
+      }
+      wrappedEmit.desktopWrapped = true;
+      global.SR.api.emit = wrappedEmit;
+    }
     const SR = global.SR;
     const hint = document.getElementById('login-offline-hint');
     if (hint) {
