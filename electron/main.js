@@ -214,6 +214,7 @@ async function boot() {
     screenNote = cached && cached.stamp ? cached.stamp : null;
   }
   try {
+    await session.defaultSession.setProxy({ mode: 'system' });
     server = await startServer({
       root: uiRoot(),
       cacheRoot: screenCacheDir(),
@@ -330,11 +331,11 @@ async function boot() {
   const win = createWindow(server.url);
   if (screenNote) win.setTitle(`StockRidge · ${screenNote}`);
   if (fs.existsSync(recoveredNote)) {
-    const detail = fs.readFileSync(recoveredNote, 'utf8');
+    try { fs.rmSync(recoveredNote, { force: true }); } catch (err) { /* shown once is enough */ }
     dialog.showMessageBox(win, {
       type: 'info',
-      message: 'StockRidge started. The old till file was set aside, not deleted.',
-      detail: `Sign in while connected once so this computer saves the catalogue again.\n\n${detail}`,
+      message: 'This is a fresh till.',
+      detail: 'Sign in with your username and PIN. The old file was kept and was not deleted.',
     }).catch(() => {});
   }
   app.on('second-instance', () => {

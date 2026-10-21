@@ -6,7 +6,22 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { startServer, desktopIndex } = require('../electron/server');
+const { startServer, desktopIndex, browserHeaders } = require('../electron/server');
+
+test('the shop request does not forward the local window address', () => {
+  const headers = browserHeaders({
+    host: '127.0.0.1:47321',
+    origin: 'http://127.0.0.1:47321',
+    'content-length': '20',
+    'content-type': 'application/json',
+    'x-device-id': 'till-1',
+  });
+  assert.equal(headers.host, undefined);
+  assert.equal(headers.origin, undefined);
+  assert.equal(headers['content-length'], undefined);
+  assert.equal(headers['content-type'], 'application/json');
+  assert.equal(headers['x-device-id'], 'till-1');
+});
 
 test('index injection loads the SQLite bridge and does not register a service worker', () => {
   const html = '<script src="/js/store.js?v=1"></script>\n<script>\n  if (\'serviceWorker\' in navigator) {\n    window.addEventListener(\'load\', function () {\n      navigator.serviceWorker.register(\'/sw.js\', { scope: \'/\' }).catch(function () {});\n    });\n  }\n</script>\n';

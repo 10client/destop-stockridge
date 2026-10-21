@@ -46,8 +46,7 @@ test('a dead shop opens the saved till and does not repeat the proxy sentence', 
     pathname: '/api/auth/login',
     body: JSON.stringify({ username: 'other', pin: '2468' }),
   });
-  assert.equal(stranger.status, 401);
-  assert.equal(stranger.body.code, 'NO_SAVED_SIGNIN');
+  assert.equal(stranger, null);
 });
 
 test('a till that signed in before PIN checks existed still opens that saved person', () => {

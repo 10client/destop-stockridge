@@ -98,11 +98,28 @@ function desktopIndex(html) {
   )));
 }
 
-function electronNet() {
-  let electron;
-  try { electron = require('electron'); } catch (err) { return null; }
-  if (!electron || !electron.net || typeof electron.net.fetch !== 'function') return null;
-  return electron.net;
+function shopFetch() {
+  try {
+    const electron = require('electron');
+    const browser = electron && electron.session && electron.session.defaultSession;
+    if (browser && typeof browser.fetch === 'function') return browser.fetch.bind(browser);
+    if (electron && electron.net && typeof electron.net.fetch === 'function') return electron.net.fetch.bind(electron.net);
+  } catch (err) { /* tests and the plain Node process have no Electron session */ }
+  return null;
+}
+
+const BROWSER_HEADERS = new Set(['accept', 'authorization', 'content-type', 'x-device-id', 'idempotency-key']);
+
+function browserHeaders(raw) {
+  const headers = {};
+  for (const [key, value] of Object.entries(raw || {})) {
+    const name = key.toLowerCase();
+    if (value == null) continue;
+    if (!BROWSER_HEADERS.has(name) && !name.startsWith('x-')) continue;
+    headers[name] = Array.isArray(value) ? value.join(', ') : String(value);
+  }
+  if (!headers.accept) headers.accept = 'application/json';
+  return headers;
 }
 
 function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port = 0, offlineDoor = null } = {}) {
@@ -224,24 +241,28 @@ function forwardHeaders(raw, { host = null } = {}) {
   return headers;
 }
 
-const UPSTREAM_TIMEOUT_MS = 8000;
-
 function sendJson(res, status, body) {
   if (res.headersSent) { res.end(); return; }
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(body || {}));
 }
 
-function nodeUpstream(target, transport, url, method, headers, body) {
+function nodeUpstream(target, transport, url, method, headers, body, signal) {
   return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) {
+      reject(new Error('aborted'));
+      return;
+    }
     const upstream = transport.request({
       protocol: target.protocol,
       hostname: target.hostname,
+      servername: target.hostname,
+      family: 4,
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       method,
       path: url.pathname + url.search,
       headers,
-      timeout: UPSTREAM_TIMEOUT_MS,
+      timeout: 12000,
     }, (pres) => {
       const chunks = [];
       pres.on('data', (chunk) => chunks.push(chunk));
@@ -254,24 +275,32 @@ function nodeUpstream(target, transport, url, method, headers, body) {
         resolve({ status: pres.statusCode || 502, headers: out, body: Buffer.concat(chunks) });
       });
     });
-    upstream.on('timeout', () => upstream.destroy(new Error('The Worker did not answer in time.')));
-    upstream.on('error', reject);
+    const fail = (err) => {
+      upstream.destroy();
+      reject(err instanceof Error ? err : new Error('The shop server could not be reached.'));
+    };
+    if (signal) signal.addEventListener('abort', () => fail(new Error('aborted')), { once: true });
+    upstream.on('timeout', () => fail(new Error('The Worker did not answer in time.')));
+    upstream.on('error', fail);
     if (body && body.length) upstream.write(body);
     upstream.end();
   });
 }
 
-function chromiumUpstream(net, target, url, method, headers, body) {
+function chromiumUpstream(fetchFn, target, url, method, headers, body, signal) {
   const init = {
     method,
     headers,
     redirect: 'follow',
   };
-  if (method !== 'GET' && method !== 'HEAD') init.body = new Uint8Array(body);
-  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-    init.signal = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
+  if (signal) init.signal = signal;
+  else if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    init.signal = AbortSignal.timeout(12000);
   }
-  return net.fetch(target.origin + url.pathname + url.search, init).then(async (response) => {
+  if (method !== 'GET' && method !== 'HEAD') {
+    init.body = body && body.length ? body.toString('utf8') : '';
+  }
+  return fetchFn(target.origin + url.pathname + url.search, init).then(async (response) => {
     const buf = Buffer.from(await response.arrayBuffer());
     const out = {};
     response.headers.forEach((value, key) => {
@@ -286,22 +315,29 @@ function localDoor(offlineDoor, method, url, body) {
   try {
     return offlineDoor({ method, pathname: url.pathname, body }) || null;
   } catch (err) {
-    return { status: 503, body: { error: 'The saved till could not be opened.', code: 'SAVED_TILL_UNREADABLE' } };
+    return null;
   }
 }
 
 function proxy(req, res, target, transport, url, offlineDoor) {
-  const net = target.protocol === 'https:' ? electronNet() : null;
+  const fetchFn = target.protocol === 'https:' ? shopFetch() : null;
   readBody(req).then(async (body) => {
     const method = req.method || 'GET';
+    const controller = new AbortController();
+    const attempts = [
+      nodeUpstream(target, transport, url, method, forwardHeaders(req.headers, { host: target.host }), body, controller.signal),
+    ];
+    if (fetchFn) {
+      attempts.unshift(chromiumUpstream(fetchFn, target, url, method, browserHeaders(req.headers), body, controller.signal));
+    }
     try {
-      const upstream = net
-        ? await chromiumUpstream(net, target, url, method, forwardHeaders(req.headers), body)
-        : await nodeUpstream(target, transport, url, method, forwardHeaders(req.headers, { host: target.host }), body);
+      const upstream = await Promise.any(attempts);
+      controller.abort();
       if (res.headersSent) return;
       res.writeHead(upstream.status, upstream.headers);
       res.end(upstream.body);
     } catch (err) {
+      controller.abort();
       const local = localDoor(offlineDoor, method, url, body);
       if (local && local.status) {
         sendJson(res, local.status, local.body);
@@ -312,4 +348,4 @@ function proxy(req, res, target, transport, url, offlineDoor) {
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders };

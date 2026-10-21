@@ -126,7 +126,7 @@
     const cachedMe = await native.store.metaGet('me');
     const savedName = cachedMe && cachedMe.user ? usernameOf(cachedMe.user.username) : '';
     if (!verified && savedName !== name && !(saved.me && saved.me.user && usernameOf(saved.me.user.username) === name)) {
-      throw new Error('This till has not signed that person in while connected. Connect once, then the same PIN opens the saved stock.');
+      throw new Error('The shop did not answer from this window. Try the same username and PIN again.');
     }
     let me = saved.me && saved.me.user ? saved.me : null;
     if (!me && savedName === name && cachedMe && cachedMe.user) me = cachedMe;
