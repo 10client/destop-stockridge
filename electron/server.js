@@ -48,37 +48,58 @@ function insertScript(html, src) {
   return `${html}\n${tag}\n`;
 }
 
-// A 502 from this proxy is the shop being down, not proof the shop answered.
-// The page otherwise treats any HTTP response as "online" and prints the
-// proxy sentence instead of opening the saved till.
-const OFFLINE_FETCH_SCRIPT = `<script id="sr-offline-fetch">
+// The local proxy was failing, and the page turned that into the raw browser
+// sentence "Failed to fetch". The window now asks the shop directly, on the
+// same connection the PWA uses. A miss becomes a normal JSON answer, not a throw.
+function shopDirectScript(origin) {
+  const shop = JSON.stringify(String(origin || '').replace(/\/$/, ''));
+  return `<script id="sr-shop-direct">
 (function () {
-  if (window.__srShopFetch || !window.fetch) return;
-  window.__srShopFetch = true;
+  var shop = ${shop};
+  if (!window.fetch || window.__srShopDirect) return;
+  window.__srShopDirect = true;
   var orig = window.fetch;
-  window.fetch = function () {
-    return orig.apply(this, arguments).then(function (res) {
-      var url = '';
-      try { url = String((arguments[0] && arguments[0].url) || arguments[0] || ''); } catch (e) { url = ''; }
-      if (url.indexOf('/api/') === -1 || res.status < 500) return res;
-      return res.clone().text().then(function (text) {
-        if (text.indexOf('UPSTREAM_UNREACHABLE') !== -1 || text.indexOf('The shop server could not be reached.') !== -1) {
-          throw new TypeError('Failed to fetch');
-        }
-        return res;
-      }, function () { return res; });
+  function shopUrl(input) {
+    if (!shop) return null;
+    var url = '';
+    try { url = String((input && input.url) || input || ''); } catch (e) { return null; }
+    var path = url;
+    if (url.indexOf('http://') === 0 || url.indexOf('https://') === 0) {
+      try {
+        var parsed = new URL(url);
+        if (parsed.origin !== location.origin) return null;
+        path = parsed.pathname + parsed.search;
+      } catch (e2) { return null; }
+    }
+    if (path.indexOf('/api/') !== 0) return null;
+    return shop + path;
+  }
+  function missed() {
+    return new Response(JSON.stringify({
+      error: 'The shop did not answer from this window. Try again.',
+      code: 'UPSTREAM_UNREACHABLE'
+    }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+  }
+  window.fetch = function (input, init) {
+    var next = shopUrl(input);
+    var run = next ? orig.call(this, next, init) : orig.apply(this, arguments);
+    return run.then(function (res) { return res; }, function () {
+      if (next || String(input || '').indexOf('/api/') !== -1) return missed();
+      return Promise.reject(new TypeError('The shop did not answer from this window. Try again.'));
     });
   };
 })();
 </script>`;
-
-function withOfflineFetch(html) {
-  if (html.includes('id="sr-offline-fetch"')) return html;
-  if (/<head\b[^>]*>/i.test(html)) return html.replace(/<head\b[^>]*>/i, (open) => `${open}\n${OFFLINE_FETCH_SCRIPT}`);
-  return `${OFFLINE_FETCH_SCRIPT}\n${html}`;
 }
 
-function desktopIndex(html) {
+function withShopDirect(html, origin) {
+  if (html.includes('id="sr-shop-direct"') || html.includes('id="sr-offline-fetch"')) return html;
+  const script = shopDirectScript(origin);
+  if (/<head\b[^>]*>/i.test(html)) return html.replace(/<head\b[^>]*>/i, (open) => `${open}\n${script}`);
+  return `${script}\n${html}`;
+}
+
+function desktopIndex(html, origin) {
   const injected = html.includes('store-native.js')
     ? html
     : html.replace(
@@ -87,7 +108,7 @@ function desktopIndex(html) {
     );
   const withSave = insertScript(injected, '/js/save-status.js');
   const withProduction = insertScript(withSave, '/js/desktop-production.js');
-  return withOfflineFetch(hideInstallChrome(withProduction.replace(
+  return withShopDirect(hideInstallChrome(withProduction.replace(
     /if \('serviceWorker' in navigator\) \{[\s\S]*?\}\s*\n\s*<\/script>/,
     `if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function (regs) {
@@ -95,15 +116,15 @@ function desktopIndex(html) {
     });
   }
 </script>`,
-  )));
+  )), origin);
 }
 
-function shopFetch() {
+function electronNet() {
   try {
     const electron = require('electron');
-    const browser = electron && electron.session && electron.session.defaultSession;
-    if (browser && typeof browser.fetch === 'function') return browser.fetch.bind(browser);
-    if (electron && electron.net && typeof electron.net.fetch === 'function') return electron.net.fetch.bind(electron.net);
+    if (!electron || !electron.net || typeof electron.net.request !== 'function') return null;
+    if (!electron.session || !electron.session.defaultSession) return null;
+    return electron;
   } catch (err) { /* tests and the plain Node process have no Electron session */ }
   return null;
 }
@@ -141,7 +162,7 @@ function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port 
       proxy(req, res, target, transport, url, offlineDoor);
       return;
     }
-    serveStatic(root, url.pathname, res, cacheRoot);
+    serveStatic(root, url.pathname, res, cacheRoot, target.origin);
   });
 
   return new Promise((resolve, reject) => {
@@ -171,7 +192,7 @@ function saveStatusScript() {
   return path.join(__dirname, '..', 'public', 'js', 'save-status.js');
 }
 
-function serveStatic(root, urlPath, res, cacheRoot) {
+function serveStatic(root, urlPath, res, cacheRoot, origin) {
   const pathname = urlPath.split('?')[0];
   if (pathname === '/sw.js') {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -206,7 +227,7 @@ function serveStatic(root, urlPath, res, cacheRoot) {
       }
       const ext = path.extname(target).toLowerCase();
       let body = buf;
-      if (path.basename(target) === 'index.html') body = Buffer.from(desktopIndex(buf.toString('utf8')), 'utf8');
+      if (path.basename(target) === 'index.html') body = Buffer.from(desktopIndex(buf.toString('utf8'), origin), 'utf8');
       res.writeHead(200, {
         'Content-Type': MIME[ext] || 'application/octet-stream',
         'Cache-Control': 'no-store',
@@ -287,26 +308,50 @@ function nodeUpstream(target, transport, url, method, headers, body, signal) {
   });
 }
 
-function chromiumUpstream(fetchFn, target, url, method, headers, body, signal) {
-  const init = {
-    method,
-    headers,
-    redirect: 'follow',
-  };
-  if (signal) init.signal = signal;
-  else if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-    init.signal = AbortSignal.timeout(12000);
-  }
-  if (method !== 'GET' && method !== 'HEAD') {
-    init.body = body && body.length ? body.toString('utf8') : '';
-  }
-  return fetchFn(target.origin + url.pathname + url.search, init).then(async (response) => {
-    const buf = Buffer.from(await response.arrayBuffer());
-    const out = {};
-    response.headers.forEach((value, key) => {
-      if (!HOP.has(String(key).toLowerCase())) out[key] = value;
+function netUpstream(target, url, method, headers, body) {
+  const electron = electronNet();
+  if (!electron) return Promise.reject(new Error('Chromium network is not available.'));
+  return new Promise((resolve, reject) => {
+    let upstream;
+    try {
+      upstream = electron.net.request({
+        method,
+        url: `${target.origin}${url.pathname}${url.search}`,
+        session: electron.session.defaultSession,
+      });
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    const timer = setTimeout(() => {
+      try { upstream.abort(); } catch (abortErr) { /* already finished */ }
+      reject(new Error('The Worker did not answer in time.'));
+    }, 12000);
+    const fail = (err) => {
+      clearTimeout(timer);
+      reject(err instanceof Error ? err : new Error('The shop server could not be reached.'));
+    };
+    for (const [key, value] of Object.entries(headers || {})) {
+      if (value == null) continue;
+      try { upstream.setHeader(key, String(value)); } catch (headerErr) { /* Chromium refuses a hop header */ }
+    }
+    const chunks = [];
+    upstream.on('response', (response) => {
+      response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      response.on('end', () => {
+        clearTimeout(timer);
+        const out = {};
+        for (const [key, value] of Object.entries(response.headers || {})) {
+          if (HOP.has(key.toLowerCase())) continue;
+          out[key] = Array.isArray(value) ? value.join(', ') : value;
+        }
+        resolve({ status: response.statusCode || 502, headers: out, body: Buffer.concat(chunks) });
+      });
+      response.on('error', fail);
     });
-    return { status: response.status, headers: out, body: buf };
+    upstream.on('error', fail);
+    if (body && body.length && method !== 'GET' && method !== 'HEAD') upstream.write(body);
+    upstream.end();
   });
 }
 
@@ -320,31 +365,35 @@ function localDoor(offlineDoor, method, url, body) {
 }
 
 function proxy(req, res, target, transport, url, offlineDoor) {
-  const fetchFn = target.protocol === 'https:' ? shopFetch() : null;
   readBody(req).then(async (body) => {
     const method = req.method || 'GET';
-    const controller = new AbortController();
-    const attempts = [
-      nodeUpstream(target, transport, url, method, forwardHeaders(req.headers, { host: target.host }), body, controller.signal),
-    ];
-    if (fetchFn) {
-      attempts.unshift(chromiumUpstream(fetchFn, target, url, method, browserHeaders(req.headers), body, controller.signal));
+    let upstream = null;
+    if (target.protocol === 'https:' && electronNet()) {
+      try {
+        upstream = await netUpstream(target, url, method, browserHeaders(req.headers), body);
+      } catch (err) {
+        upstream = null;
+      }
     }
-    try {
-      const upstream = await Promise.any(attempts);
-      controller.abort();
+    if (!upstream) {
+      try {
+        upstream = await nodeUpstream(target, transport, url, method, forwardHeaders(req.headers, { host: target.host }), body, null);
+      } catch (err) {
+        upstream = null;
+      }
+    }
+    if (upstream) {
       if (res.headersSent) return;
       res.writeHead(upstream.status, upstream.headers);
       res.end(upstream.body);
-    } catch (err) {
-      controller.abort();
-      const local = localDoor(offlineDoor, method, url, body);
-      if (local && local.status) {
-        sendJson(res, local.status, local.body);
-        return;
-      }
-      unreachable(res);
+      return;
     }
+    const local = localDoor(offlineDoor, method, url, body);
+    if (local && local.status) {
+      sendJson(res, local.status, local.body);
+      return;
+    }
+    unreachable(res);
   }).catch(() => unreachable(res));
 }
 

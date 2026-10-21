@@ -25,7 +25,7 @@ test('the shop request does not forward the local window address', () => {
 
 test('index injection loads the SQLite bridge and does not register a service worker', () => {
   const html = '<script src="/js/store.js?v=1"></script>\n<script>\n  if (\'serviceWorker\' in navigator) {\n    window.addEventListener(\'load\', function () {\n      navigator.serviceWorker.register(\'/sw.js\', { scope: \'/\' }).catch(function () {});\n    });\n  }\n</script>\n';
-  const out = desktopIndex(html);
+  const out = desktopIndex(html, 'https://sample.stockridge.workers.dev');
   assert.match(out, /store-native\.js/);
   assert.match(out, /save-status\.js[\s\S]*desktop-production\.js/);
   assert.match(out, /sr-native-install/);
@@ -37,8 +37,9 @@ test('index injection loads the SQLite bridge and does not register a service wo
   assert.doesNotMatch(stripped, /id="login-install"/);
   assert.doesNotMatch(out, /serviceWorker\.register/);
   assert.match(out, /unregister/);
-  assert.match(out, /id="sr-offline-fetch"/);
-  assert.match(out, /UPSTREAM_UNREACHABLE/);
+  assert.match(out, /id="sr-shop-direct"/);
+  assert.match(out, /https:\/\/sample\.stockridge\.workers\.dev/);
+  assert.doesNotMatch(out, /Failed to fetch/);
 });
 
 test('serves the UI from the checkout and proxies /api without accepting a path escape', async () => {
@@ -63,6 +64,9 @@ test('serves the UI from the checkout and proxies /api without accepting a path 
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /store-native\.js/);
+    assert.match(html, /id="sr-shop-direct"/);
+    assert.match(html, new RegExp(desktop.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.doesNotMatch(html, /Failed to fetch/);
     assert.doesNotMatch(html, /serviceWorker\.register/);
     const api = await fetch(desktop.url + 'api/health', { headers: { Authorization: 'Bearer test-token' } });
     const body = await api.json();
