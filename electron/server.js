@@ -176,7 +176,10 @@ function serveStatic(root, urlPath, res, cacheRoot, origin) {
   }
   const cached = cacheRoot ? safeFile(cacheRoot, urlPath) : null;
   const bundled = safeFile(root, urlPath);
-  const file = (cached && fs.existsSync(cached) && !fs.statSync(cached).isDirectory()) ? cached : bundled;
+  const cachedOk = Boolean(cached && fs.existsSync(cached) && !fs.statSync(cached).isDirectory());
+  const bundledOk = Boolean(bundled && fs.existsSync(bundled) && !fs.statSync(bundled).isDirectory());
+  const choice = chooseStaticFile(bundledOk, cachedOk);
+  const file = choice === 'bundled' ? bundled : (choice === 'cached' ? cached : null);
   if (!file) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end('Not found');
@@ -237,6 +240,38 @@ function withBodyLength(headers, body) {
   const next = Object.assign({}, headers || {});
   if (body && body.length) next['content-length'] = String(body.length);
   return next;
+}
+
+function bodyIsGzip(body) {
+  return Buffer.isBuffer(body) && body.length >= 2 && body[0] === 0x1f && body[1] === 0x8b;
+}
+
+// Chromium's net.request decodes gzip and still reports content-encoding: gzip.
+// Forwarding that pair makes the window fail the next call with "Failed to fetch"
+// after sign-in has already succeeded. Tell the window the truth about the bytes
+// we are actually sending.
+function responseForWindow(headers, body) {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body || '');
+  const out = {};
+  for (const [key, value] of Object.entries(headers || {})) {
+    const name = String(key).toLowerCase();
+    if (HOP.has(name) || name === 'content-length' || name === 'content-encoding' || value == null) continue;
+    out[name] = Array.isArray(value) ? value.join(', ') : String(value);
+  }
+  if (bodyIsGzip(buf)) {
+    const encoding = headers && (headers['content-encoding'] || headers['Content-Encoding']);
+    if (encoding) out['content-encoding'] = Array.isArray(encoding) ? encoding.join(', ') : String(encoding);
+  }
+  out['content-length'] = String(buf.length);
+  return out;
+}
+
+// The screen cache is the last PWA deploy. It must not hide a till fix that is
+// already in this program. A file we shipped wins. The cache only fills a gap.
+function chooseStaticFile(bundledExists, cachedExists) {
+  if (bundledExists) return 'bundled';
+  if (cachedExists) return 'cached';
+  return null;
 }
 
 function nodeUpstream(target, transport, url, method, headers, body, { family = undefined, rejectUnauthorized = true } = {}) {
@@ -380,7 +415,7 @@ function proxy(req, res, target, transport, url, offlineDoor) {
     }
     if (upstream) {
       if (res.headersSent) return;
-      res.writeHead(upstream.status, upstream.headers);
+      res.writeHead(upstream.status, responseForWindow(upstream.headers, upstream.body));
       res.end(upstream.body);
       return;
     }
@@ -393,4 +428,4 @@ function proxy(req, res, target, transport, url, offlineDoor) {
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile };

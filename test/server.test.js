@@ -6,7 +6,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { startServer, desktopIndex, browserHeaders, electronLostDevice, withBodyLength } = require('../electron/server');
+const { startServer, desktopIndex, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile } = require('../electron/server');
 
 test('the shop request does not forward the local window address', () => {
   const headers = browserHeaders({
@@ -21,6 +21,24 @@ test('the shop request does not forward the local window address', () => {
   assert.equal(headers['content-length'], undefined);
   assert.equal(headers['content-type'], 'application/json');
   assert.equal(headers['x-device-id'], 'till-1');
+});
+
+test('a decoded shop answer is not labelled gzip, which the window reports as Failed to fetch', () => {
+  const plain = Buffer.from('{"ok":true}');
+  const headers = responseForWindow({ 'content-type': 'application/json', 'content-encoding': 'gzip', 'content-length': '99' }, plain);
+  assert.equal(headers['content-encoding'], undefined);
+  assert.equal(headers['content-length'], String(plain.length));
+  assert.equal(headers['content-type'], 'application/json');
+  const gzip = Buffer.from([0x1f, 0x8b, 0x08, 0x00]);
+  const stillGzip = responseForWindow({ 'content-encoding': 'gzip', 'content-length': '2' }, gzip);
+  assert.equal(stillGzip['content-encoding'], 'gzip');
+  assert.equal(stillGzip['content-length'], String(gzip.length));
+});
+
+test('a till fix already in the program is not hidden by the old PWA screen cache', () => {
+  assert.equal(chooseStaticFile(true, true), 'bundled');
+  assert.equal(chooseStaticFile(false, true), 'cached');
+  assert.equal(chooseStaticFile(false, false), null);
 });
 
 test('a login body keeps its length so the shop can read the PIN', () => {

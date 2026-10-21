@@ -72,19 +72,37 @@
     return '';
   }
 
+  // The window must not call the Worker itself. That call has no browser
+  // signature, Cloudflare refuses it, and the screen says "Failed to fetch".
+  // Shop calls stay on this computer and the proxy forwards them.
+  function localApiUrl(input) {
+    const raw = String((input && input.url) || input || '');
+    const shop = raw.match(/^https?:\/\/[^/]*stockridge\.workers\.dev(\/api\/[^?#]*)(.*)$/i);
+    if (shop) return shop[1] + (shop[2] || '');
+    return raw;
+  }
+
+  function shopMissResponse() {
+    return new Response(JSON.stringify({
+      error: 'The shop did not answer from this window. Try again.',
+      code: 'OFFLINE',
+    }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+  }
+
   if (global.fetch && !global.__srDeviceFetch) {
     global.__srDeviceFetch = true;
     const origFetch = global.fetch.bind(global);
     global.fetch = function (input, init) {
-      const url = String((input && input.url) || input || '');
+      const url = localApiUrl(input);
       const localApi = url.indexOf('/api/') !== -1;
       if (!localApi) return origFetch(input, init);
+      const target = url === String((input && input.url) || input || '') ? input : url;
       const id = deviceIdNow();
       const headers = new Headers((init && init.headers) || {});
       if (id) headers.set('X-Device-Id', id);
       else headers.delete('X-Device-Id');
       const next = Object.assign({}, init || {}, { headers });
-      return origFetch(input, next).then(async (res) => {
+      return origFetch(target, next).then(async (res) => {
         if (!res || res.status !== 401) return res;
         const copy = res.clone();
         const text = await copy.text().catch(() => '');
@@ -94,19 +112,35 @@
           if (againId) {
             const retryHeaders = new Headers(headers);
             retryHeaders.set('X-Device-Id', againId);
-            final = await origFetch(input, Object.assign({}, next, { headers: retryHeaders }));
+            final = await origFetch(target, Object.assign({}, next, { headers: retryHeaders }));
           }
         }
         if (localSessionOnly && final && final.status === 401 && url.indexOf('/api/auth/login') === -1) {
-          return new Response(JSON.stringify({
-            error: 'The shop server could not be reached.',
-            code: 'UPSTREAM_UNREACHABLE',
-          }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+          return shopMissResponse();
         }
         return final;
-      });
+      }).catch(() => shopMissResponse());
     };
   }
+
+  function patchErrorBlock() {
+    const ui = global.SR && global.SR.ui;
+    if (!ui || !ui.errorBlock || ui.errorBlock.desktopWrapped) return;
+    const orig = ui.errorBlock.bind(ui);
+    function errorBlock(err, opts) {
+      const message = String((err && err.message) || '');
+      const missed = /failed to fetch/i.test(message)
+        || (err && (err.isOffline || err.code === 'OFFLINE' || err.code === 'UPSTREAM_UNREACHABLE'));
+      if (!missed) return orig(err, opts);
+      const soft = new Error('The shop did not answer from this window. Figures saved on this till are still here.');
+      soft.code = 'OFFLINE';
+      soft.isOffline = true;
+      return orig(soft, opts);
+    }
+    errorBlock.desktopWrapped = true;
+    ui.errorBlock = errorBlock;
+  }
+  patchErrorBlock();
 
   function saleLines(record) {
     const lines = record && record.payload && record.payload.lines;
@@ -320,6 +354,7 @@
   }, 30);
 
   whenReady(() => {
+    patchErrorBlock();
     const SR = global.SR;
     const hint = document.getElementById('login-offline-hint');
     if (hint) {
