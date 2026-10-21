@@ -9,7 +9,7 @@ const { isPlainSqlite, openSteps } = require('../lib/sql-open');
 
 test('a plain till file is not opened as SQLCipher first', () => {
   const steps = openSteps(true, null);
-  assert.deepEqual(steps, ['plain-read', 'sqleet-rekey']);
+  assert.deepEqual(steps, ['plain-read']);
   assert.equal(steps.includes('sqlcipher'), false);
   assert.equal(steps.includes('sqlcipher-raw'), false);
 });

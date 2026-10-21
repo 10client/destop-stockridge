@@ -182,7 +182,24 @@ async function boot() {
   }
   const dbFile = path.join(app.getPath('userData'), 'stockridge.db');
   fs.mkdirSync(path.dirname(dbFile), { recursive: true });
-  store = new DeviceStore(dbFile, { key: databaseKey() });
+  try {
+    store = new DeviceStore(dbFile, { key: databaseKey() });
+  } catch (err) {
+    const message = String(err && err.message || err);
+    if (!/not a database|saved stock could not be opened/i.test(message)) throw err;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const aside = `${dbFile}.unreadable-${stamp}`;
+    try { if (fs.existsSync(dbFile)) fs.renameSync(dbFile, aside); } catch (moveErr) { /* open a new file beside it if the bad one cannot be moved */ }
+    for (const ext of ['-wal', '-shm']) {
+      const side = `${dbFile}${ext}`;
+      if (fs.existsSync(side)) {
+        try { fs.renameSync(side, `${aside}${ext}`); } catch (moveErr) { /* the new file must not reuse a bad journal */ }
+      }
+    }
+    fs.writeFileSync(`${dbFile}.recovered`, `Set aside ${aside}\n${message}\n`);
+    store = new DeviceStore(dbFile);
+  }
+  const recoveredNote = `${dbFile}.recovered`;
   if (process.env.STOCKRIDGE_HUB && process.env.STOCKRIDGE_HUB_SECRET) {
     store.metaSet('hub_peer', { url: process.env.STOCKRIDGE_HUB, secret: process.env.STOCKRIDGE_HUB_SECRET });
   }
@@ -312,6 +329,14 @@ async function boot() {
   await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});
   const win = createWindow(server.url);
   if (screenNote) win.setTitle(`StockRidge · ${screenNote}`);
+  if (fs.existsSync(recoveredNote)) {
+    const detail = fs.readFileSync(recoveredNote, 'utf8');
+    dialog.showMessageBox(win, {
+      type: 'info',
+      message: 'StockRidge started. The old till file was set aside, not deleted.',
+      detail: `Sign in while connected once so this computer saves the catalogue again.\n\n${detail}`,
+    }).catch(() => {});
+  }
   app.on('second-instance', () => {
     const wins = BrowserWindow.getAllWindows();
     if (wins[0]) { if (wins[0].isMinimized()) wins[0].restore(); wins[0].focus(); }
