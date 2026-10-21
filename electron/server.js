@@ -48,58 +48,13 @@ function insertScript(html, src) {
   return `${html}\n${tag}\n`;
 }
 
-// The local proxy was failing, and the page turned that into the raw browser
-// sentence "Failed to fetch". The window now asks the shop directly, on the
-// same connection the PWA uses. A miss becomes a normal JSON answer, not a throw.
-function shopDirectScript(origin) {
-  const shop = JSON.stringify(String(origin || '').replace(/\/$/, ''));
-  return `<script id="sr-shop-direct">
-(function () {
-  var shop = ${shop};
-  if (!window.fetch || window.__srShopDirect) return;
-  window.__srShopDirect = true;
-  var orig = window.fetch;
-  function shopUrl(input) {
-    if (!shop) return null;
-    var url = '';
-    try { url = String((input && input.url) || input || ''); } catch (e) { return null; }
-    var path = url;
-    if (url.indexOf('http://') === 0 || url.indexOf('https://') === 0) {
-      try {
-        var parsed = new URL(url);
-        if (parsed.origin !== location.origin) return null;
-        path = parsed.pathname + parsed.search;
-      } catch (e2) { return null; }
-    }
-    if (path.indexOf('/api/') !== 0) return null;
-    return shop + path;
-  }
-  function missed() {
-    return new Response(JSON.stringify({
-      error: 'The shop did not answer from this window. Try again.',
-      code: 'UPSTREAM_UNREACHABLE'
-    }), { status: 502, headers: { 'Content-Type': 'application/json' } });
-  }
-  window.fetch = function (input, init) {
-    var next = shopUrl(input);
-    var run = next ? orig.call(this, next, init) : orig.apply(this, arguments);
-    return run.then(function (res) { return res; }, function () {
-      if (next || String(input || '').indexOf('/api/') !== -1) return missed();
-      return Promise.reject(new TypeError('The shop did not answer from this window. Try again.'));
-    });
-  };
-})();
-</script>`;
-}
+// Cloudflare refuses a request with no browser signature (error 1010) and that
+// refusal has no CORS headers, so a window fetch reports a network failure.
+// The page stays on this computer. The proxy asks the shop with a normal
+// browser signature and returns the shop's own JSON.
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
-function withShopDirect(html, origin) {
-  if (html.includes('id="sr-shop-direct"') || html.includes('id="sr-offline-fetch"')) return html;
-  const script = shopDirectScript(origin);
-  if (/<head\b[^>]*>/i.test(html)) return html.replace(/<head\b[^>]*>/i, (open) => `${open}\n${script}`);
-  return `${script}\n${html}`;
-}
-
-function desktopIndex(html, origin) {
+function desktopIndex(html) {
   const injected = html.includes('store-native.js')
     ? html
     : html.replace(
@@ -108,7 +63,7 @@ function desktopIndex(html, origin) {
     );
   const withSave = insertScript(injected, '/js/save-status.js');
   const withProduction = insertScript(withSave, '/js/desktop-production.js');
-  return withShopDirect(hideInstallChrome(withProduction.replace(
+  return hideInstallChrome(withProduction.replace(
     /if \('serviceWorker' in navigator\) \{[\s\S]*?\}\s*\n\s*<\/script>/,
     `if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function (regs) {
@@ -116,7 +71,7 @@ function desktopIndex(html, origin) {
     });
   }
 </script>`,
-  )), origin);
+  ));
 }
 
 function electronNet() {
@@ -140,6 +95,7 @@ function browserHeaders(raw) {
     headers[name] = Array.isArray(value) ? value.join(', ') : String(value);
   }
   if (!headers.accept) headers.accept = 'application/json';
+  if (!headers['user-agent']) headers['user-agent'] = CHROME_UA;
   return headers;
 }
 
@@ -268,23 +224,21 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body || {}));
 }
 
-function nodeUpstream(target, transport, url, method, headers, body, signal) {
+function nodeUpstream(target, transport, url, method, headers, body, { family = undefined, rejectUnauthorized = true } = {}) {
   return new Promise((resolve, reject) => {
-    if (signal && signal.aborted) {
-      reject(new Error('aborted'));
-      return;
-    }
-    const upstream = transport.request({
+    const options = {
       protocol: target.protocol,
       hostname: target.hostname,
       servername: target.hostname,
-      family: 4,
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       method,
       path: url.pathname + url.search,
-      headers,
+      headers: Object.assign({ 'user-agent': CHROME_UA }, headers || {}),
       timeout: 12000,
-    }, (pres) => {
+      rejectUnauthorized,
+    };
+    if (family) options.family = family;
+    const upstream = transport.request(options, (pres) => {
       const chunks = [];
       pres.on('data', (chunk) => chunks.push(chunk));
       pres.on('end', () => {
@@ -300,7 +254,6 @@ function nodeUpstream(target, transport, url, method, headers, body, signal) {
       upstream.destroy();
       reject(err instanceof Error ? err : new Error('The shop server could not be reached.'));
     };
-    if (signal) signal.addEventListener('abort', () => fail(new Error('aborted')), { once: true });
     upstream.on('timeout', () => fail(new Error('The Worker did not answer in time.')));
     upstream.on('error', fail);
     if (body && body.length) upstream.write(body);
@@ -331,7 +284,8 @@ function netUpstream(target, url, method, headers, body) {
       clearTimeout(timer);
       reject(err instanceof Error ? err : new Error('The shop server could not be reached.'));
     };
-    for (const [key, value] of Object.entries(headers || {})) {
+    const headed = Object.assign({ 'user-agent': CHROME_UA }, headers || {});
+    for (const [key, value] of Object.entries(headed)) {
       if (value == null) continue;
       try { upstream.setHeader(key, String(value)); } catch (headerErr) { /* Chromium refuses a hop header */ }
     }
@@ -375,9 +329,19 @@ function proxy(req, res, target, transport, url, offlineDoor) {
         upstream = null;
       }
     }
-    if (!upstream) {
+    const nodeHeaders = forwardHeaders(req.headers, { host: target.host });
+    nodeHeaders['user-agent'] = CHROME_UA;
+    const nodeTries = [
+      () => nodeUpstream(target, transport, url, method, nodeHeaders, body),
+      () => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4 }),
+    ];
+    if (target.protocol === 'https:') {
+      nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { rejectUnauthorized: false }));
+    }
+    for (const attempt of nodeTries) {
+      if (upstream) break;
       try {
-        upstream = await nodeUpstream(target, transport, url, method, forwardHeaders(req.headers, { host: target.host }), body, null);
+        upstream = await attempt();
       } catch (err) {
         upstream = null;
       }

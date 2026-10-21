@@ -37,9 +37,9 @@ test('index injection loads the SQLite bridge and does not register a service wo
   assert.doesNotMatch(stripped, /id="login-install"/);
   assert.doesNotMatch(out, /serviceWorker\.register/);
   assert.match(out, /unregister/);
-  assert.match(out, /id="sr-shop-direct"/);
-  assert.match(out, /https:\/\/sample\.stockridge\.workers\.dev/);
+  assert.doesNotMatch(out, /sr-shop-direct/);
   assert.doesNotMatch(out, /Failed to fetch/);
+  assert.doesNotMatch(out, /did not answer from this window/);
 });
 
 test('serves the UI from the checkout and proxies /api without accepting a path escape', async () => {
@@ -64,8 +64,7 @@ test('serves the UI from the checkout and proxies /api without accepting a path 
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /store-native\.js/);
-    assert.match(html, /id="sr-shop-direct"/);
-    assert.match(html, new RegExp(desktop.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.doesNotMatch(html, /sr-shop-direct/);
     assert.doesNotMatch(html, /Failed to fetch/);
     assert.doesNotMatch(html, /serviceWorker\.register/);
     const api = await fetch(desktop.url + 'api/health', { headers: { Authorization: 'Bearer test-token' } });

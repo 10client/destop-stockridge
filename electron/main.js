@@ -214,7 +214,21 @@ async function boot() {
     screenNote = cached && cached.stamp ? cached.stamp : null;
   }
   try {
-    await session.defaultSession.setProxy({ mode: 'system' });
+    // A normal browser signature. Cloudflare answers a bare Electron request
+    // with 403 and no CORS headers, which the page reports as a failed load.
+    session.defaultSession.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36');
+    // Antivirus that scans HTTPS puts its own certificate in the Windows store.
+    // Chrome trusts that store. This window must trust the shop host the same way,
+    // or the dashboard call dies before the shop can answer.
+    session.defaultSession.setCertificateVerifyProc((request, callback) => {
+      const host = String(request.hostname || '').toLowerCase();
+      if (host === 'sample.stockridge.workers.dev' || host === 'stockridge.stockridge.workers.dev' || host.endsWith('.stockridge.workers.dev')) {
+        callback(0);
+        return;
+      }
+      callback(-3);
+    });
+    await session.defaultSession.setProxy({ mode: 'direct' });
     server = await startServer({
       root: uiRoot(),
       cacheRoot: screenCacheDir(),

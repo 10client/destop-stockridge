@@ -103,7 +103,7 @@
     const payload = err.payload && typeof err.payload === 'object' ? err.payload : null;
     const code = String(err.code || (payload && payload.code) || '');
     if (code === 'UPSTREAM_UNREACHABLE' || code === 'OFFLINE') return true;
-    if (/shop server could not be reached/i.test(String(err.message || ''))) return true;
+    if (/shop server could not be reached|did not answer from this window|failed to fetch/i.test(String(err.message || ''))) return true;
     if (err.isOffline) return true;
     return Number(err.status) === 0;
   }
