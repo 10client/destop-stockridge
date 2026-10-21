@@ -274,3 +274,70 @@ test('a closed shop answers the saved till instead of the proxy sentence', async
     await desktop.close();
   }
 });
+
+test('a gateway 502 is not kept when the next path is the shop', async () => {
+  let n = 0;
+  const upstream = http.createServer((req, res) => {
+    n += 1;
+    if (n === 1) {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'bad gateway' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, path: req.url }));
+  });
+  await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-502-'));
+  fs.mkdirSync(path.join(root, 'public'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'public', 'index.html'), '<head></head><body></body>');
+  const desktop = await startServer({
+    root,
+    origin: `http://127.0.0.1:${upstream.address().port}`,
+    host: '127.0.0.1',
+    port: 0,
+  });
+  try {
+    const api = await fetch(desktop.url + 'api/health');
+    const body = await api.json();
+    assert.equal(api.status, 200);
+    assert.equal(body.ok, true);
+    assert.ok(n >= 2);
+  } finally {
+    await desktop.close();
+    await new Promise((resolve) => upstream.close(resolve));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the other host answers when the primary port is closed', async () => {
+  const dead = http.createServer();
+  await new Promise((resolve) => dead.listen(0, '127.0.0.1', resolve));
+  const deadPort = dead.address().port;
+  await new Promise((resolve) => dead.close(resolve));
+  const live = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, path: req.url }));
+  });
+  await new Promise((resolve) => live.listen(0, '127.0.0.1', resolve));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-sib-'));
+  fs.mkdirSync(path.join(root, 'public'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'public', 'index.html'), '<head></head><body></body>');
+  const desktop = await startServer({
+    root,
+    origin: `http://127.0.0.1:${deadPort}`,
+    fallbackOrigin: `http://127.0.0.1:${live.address().port}`,
+    host: '127.0.0.1',
+    port: 0,
+  });
+  try {
+    const api = await fetch(desktop.url + 'api/health');
+    const body = await api.json();
+    assert.equal(api.status, 200);
+    assert.equal(body.ok, true);
+  } finally {
+    await desktop.close();
+    await new Promise((resolve) => live.close(resolve));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

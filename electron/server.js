@@ -109,13 +109,14 @@ function browserHeaders(raw) {
   return headers;
 }
 
-function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port = 0, offlineDoor = null, onAcceptedLogin = null } = {}) {
+function startServer({ root, origin, fallbackOrigin = null, cacheRoot = null, host = '127.0.0.1', port = 0, offlineDoor = null, onAcceptedLogin = null } = {}) {
   if (!root) throw new Error('The desktop shell needs STOCKRIDGE_ROOT, the folder that contains public/.');
   if (!fs.existsSync(path.join(publicDir(root), 'index.html'))) {
     throw new Error(`No StockRidge UI at ${publicDir(root)}. Set STOCKRIDGE_ROOT to the checkout.`);
   }
   const target = new URL(origin || 'https://sample.stockridge.workers.dev');
   const transport = target.protocol === 'http:' ? http : https;
+  const fallback = fallbackOrigin ? new URL(fallbackOrigin) : null;
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
@@ -125,7 +126,7 @@ function startServer({ root, origin, cacheRoot = null, host = '127.0.0.1', port 
       return;
     }
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-      proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin);
+      proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, fallback);
       return;
     }
     serveStatic(root, url.pathname, res, cacheRoot, target.origin);
@@ -377,6 +378,19 @@ function responseText(upstream) {
 // Chromium's net.request can accept the call and still omit x-device-id. The
 // shop then treats this till as a different device and signs it out. Node
 // sends the header we set. A real other-device sign-in still answers 401.
+// A status the shop itself sent. A gateway 502, an HTML block, and the till's
+// own saved-session door are not that. The next path may still reach the shop.
+function shopSpoke(upstream) {
+  if (!upstream || upstream.status == null) return false;
+  const status = Number(upstream.status);
+  const text = responseText(upstream);
+  if (!Number.isFinite(status) || status <= 0 || status >= 500) return false;
+  if (/UPSTREAM_UNREACHABLE|shop server could not be reached|did not answer from this window/i.test(text)) return false;
+  if (/"offline"\s*:\s*true/.test(text)) return false;
+  if (/<!doctype html|<html[\s>]/i.test(text)) return false;
+  return true;
+}
+
 function electronLostDevice(upstream, deviceId) {
   if (!deviceId || !upstream || Number(upstream.status) !== 401) return false;
   return responseText(upstream).includes('SESSION_SUPERSEDED');
@@ -475,18 +489,45 @@ async function loginUpstream(target, transport, url, method, pageHeaders, nodeHe
   return null;
 }
 
-// A health check is how the till decides it is online. Give that one path long
-// enough for a slow shop to answer. A normal screen read stays short so the
-// window is not still waiting when it gives up and paints Offline.
-function readBudgets(pathname) {
-  const pathName = String(pathname || '');
-  if (pathName === '/api/health' || pathName === '/api/health/ping') {
-    return { net: 12000, node: 10000, v4: 0, insecure: 0 };
-  }
-  return { net: 5000, node: 5000, v4: 4000, insecure: 4000 };
+// Every shop read uses the same paths. A health check that skipped IPv4 or the
+// antivirus certificate was how a connected till was marked Offline while a
+// later screen could still have answered. The total stays under the window's
+// 20 second wait. The first path that the shop answers ends the list.
+function readBudgets() {
+  return { v4: 4500, node: 3500, insecure: 3500, net: 3500, sibling: 4000 };
 }
 
-function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin) {
+async function askShopRead(hostTarget, hostTransport, url, method, pageHeaders, nodeHeaders, body, deviceId) {
+  const budget = readBudgets();
+  const httpsHost = hostTarget.protocol === 'https:';
+  const plans = [
+    { via: 'node', family: 4, timeout: budget.v4 },
+    { via: 'node', timeout: budget.node },
+    httpsHost ? { via: 'node', family: 4, insecure: true, timeout: budget.insecure } : null,
+    httpsHost && electronNet() ? { via: 'net', timeout: budget.net } : null,
+  ].filter(Boolean);
+  let spoke = null;
+  for (const plan of plans) {
+    try {
+      const got = plan.via === 'net'
+        ? await netUpstream(hostTarget, url, method, pageHeaders, body, { timeout: plan.timeout })
+        : await nodeUpstream(hostTarget, hostTransport, url, method, nodeHeaders, body, {
+          family: plan.family,
+          rejectUnauthorized: plan.insecure ? false : true,
+          timeout: plan.timeout,
+        });
+      const plain = decodeUpstream(got);
+      if (!shopSpoke(plain)) continue;
+      spoke = plain;
+      // Chromium can drop the device id and the shop then says another device.
+      // Keep this 401 only if the next path does not get a real answer.
+      if (!electronLostDevice(plain, deviceId)) return plain;
+    } catch (err) { /* this path did not reach the shop */ }
+  }
+  return spoke;
+}
+
+function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, fallback) {
   readBody(req).then(async (body) => {
     const method = req.method || 'GET';
     const pageHeaders = browserHeaders(req.headers);
@@ -496,38 +537,40 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin) {
     if (deviceId) nodeHeaders['x-device-id'] = deviceId;
     const login = method === 'POST' && url.pathname === '/api/auth/login';
     let upstream = null;
+    const other = fallback && fallback.origin !== target.origin ? fallback : null;
     if (login) {
       upstream = await loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body);
+      // One login at a time. The other host is asked only when this host did
+      // not answer a login. Two parallel logins would sign the account out.
+      if (!upstream && other) {
+        const otherTransport = other.protocol === 'http:' ? http : https;
+        const otherHeaders = forwardHeaders(req.headers, { host: other.host });
+        otherHeaders['user-agent'] = CHROME_UA;
+        if (deviceId) otherHeaders['x-device-id'] = deviceId;
+        upstream = await loginUpstream(other, otherTransport, url, method, pageHeaders, otherHeaders, body);
+      }
       const accepted = acceptedLogin(body, upstream);
       if (accepted && typeof onAcceptedLogin === 'function') {
         try { onAcceptedLogin(accepted); } catch (err) { /* the shop already accepted this person */ }
       }
     } else {
-      // A read must answer before the window's 20 second wait. Login is allowed
-      // longer. If this read is still trying when the window gives up, a
-      // connected sign-in is painted as offline.
-      const budget = readBudgets(url.pathname);
-      if (target.protocol === 'https:' && electronNet() && budget.net) {
+      // A gateway 502 is not the shop. Try IPv4, then the certificate the
+      // antivirus inserted, then Chromium, then the other host of the same books.
+      // Stop at the first answer the shop itself sent.
+      upstream = await askShopRead(target, transport, url, method, pageHeaders, nodeHeaders, body, deviceId);
+      if (!upstream && other) {
+        const otherTransport = other.protocol === 'http:' ? http : https;
+        const otherHeaders = forwardHeaders(req.headers, { host: other.host });
+        otherHeaders['user-agent'] = CHROME_UA;
+        if (deviceId) otherHeaders['x-device-id'] = deviceId;
         try {
-          upstream = await netUpstream(target, url, method, pageHeaders, body, { timeout: budget.net });
-        } catch (err) {
-          upstream = null;
-        }
-      }
-      if (electronLostDevice(upstream, deviceId)) upstream = null;
-      const nodeTries = [];
-      if (budget.node) nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { timeout: budget.node }));
-      if (budget.v4) nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: budget.v4 }));
-      if (target.protocol === 'https:' && budget.insecure) {
-        nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { rejectUnauthorized: false, timeout: budget.insecure }));
-      }
-      for (const attempt of nodeTries) {
-        if (upstream) break;
-        try {
-          upstream = await attempt();
-        } catch (err) {
-          upstream = null;
-        }
+          const got = await nodeUpstream(other, otherTransport, url, method, otherHeaders, body, {
+            family: 4,
+            timeout: readBudgets().sibling,
+          });
+          const plain = decodeUpstream(got);
+          if (shopSpoke(plain)) upstream = plain;
+        } catch (err) { /* the other host did not answer either */ }
       }
     }
     if (upstream) {
@@ -546,4 +589,4 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin) {
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, shopSpoke };

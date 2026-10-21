@@ -7,7 +7,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, session } = requ
 const { DeviceStore } = require('../lib/device-store');
 const { startServer } = require('./server');
 const { answerWhenShopDown } = require('../lib/offline-door');
-const { stockridgeRoot, workerOrigin } = require('./paths');
+const { stockridgeRoot, workerOrigin, siblingOrigin } = require('./paths');
 const { startHub } = require('../lib/hub');
 const { refreshScreens, readStamp } = require('../lib/screen-sync');
 const { SAMPLE_ORIGIN } = require('./paths');
@@ -228,11 +228,17 @@ async function boot() {
       }
       callback(-3);
     });
-    await session.defaultSession.setProxy({ mode: 'direct' });
+    // direct mode ignored the computer's proxy. A browser on that proxy is
+    // online while every shop call from this window fails, and the till says
+    // Offline. system uses the same proxy the computer already uses. Node's
+    // own path still connects directly, so a home line with no proxy still works.
+    await session.defaultSession.setProxy({ mode: 'system' });
+    const shopOrigin = origin();
     server = await startServer({
       root: uiRoot(),
       cacheRoot: screenCacheDir(),
-      origin: origin(),
+      origin: shopOrigin,
+      fallbackOrigin: siblingOrigin(shopOrigin),
       port,
       offlineDoor: (call) => answerWhenShopDown(store, call),
       onAcceptedLogin: (accepted) => {

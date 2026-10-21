@@ -28,7 +28,9 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 11. A connected sign-in is online. Do not paint the offline dashboard because one read gave up before the shop answered. A sale made while the shop is down is saved on this till and counted there. It uploads when the line returns.
 
-12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence. Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
+12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence or the saved-till door (`offline: true`). Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
+
+13. A gateway 502 is not the last word. Try IPv4, then the certificate an antivirus inserted, then Chromium on the computer's proxy, then the other host of the same books. Do not set the session proxy to `direct`. Do not count the saved-till door as the shop. Do not paint **You are offline** or **Offline —** on a screen while the shop has answered.
 
 ## What happened, in order
 
@@ -90,7 +92,13 @@ That last fix was not enough. The till still showed Offline after a connected si
 - One missed `/api/` call. The window wrapper turned that throw, and a saved-session 401, into `502` `OFFLINE`. The screen then treated the shop as down.
 - A probe of `/api/health/ping` that only ran after the chip was already Offline. The live shop answers 404 on that path. A 404 is the shop speaking. A proxy 502 is not.
 
-Fix: a shop answer is the only online signal. Ask `/api/health` and retry the screen before painting Offline. Two probe misses are required. A 401 is kept as a 401. The dashboard does not show the Offline banner while the chip says the shop answered. The longer wait is only for that health check, so a slow shop is not called down. A sale the shop did not take is still saved on this till.
+Fix: a shop answer is the only online signal. Ask `/api/health` and retry the screen before painting Offline. Two probe misses are required. A 401 is kept as a 401. The dashboard does not show the Offline banner while the chip says the shop answered. A sale the shop did not take is still saved on this till.
+
+### Still Offline after that rule
+
+The rule was not enough while the proxy could still fail a shop that was up. A first gateway 502 was kept, so the next path was never asked. The health check skipped IPv4 and the antivirus certificate. Chromium was set to `direct`, so a computer that reaches the internet through a proxy looked offline inside this window. The saved-till door answers `GET /api/auth/me` and `POST /api/auth/login` with `200` and `offline: true` when the proxy misses. That was counted as a session, then the dashboard missed and painted Offline. Every screen that saw an `OFFLINE` error painted its own **Offline —** banner without asking whether the shop had answered.
+
+Fix: keep going until the shop itself speaks. IPv4 first, then the inspected certificate, then Chromium on the system proxy, then the other host of the same books (`sample` and `stockridge`). A saved-till body is not a shop answer. A screen does not get an `OFFLINE` error, and does not say **You are offline**, unless the shop has missed twice. If a shop answer is already in hand, the chip and the **Offline —** alerts are put back.
 
 This is not confirmed until the unpacked program built from the commit that contains this rule is the program they open.
 

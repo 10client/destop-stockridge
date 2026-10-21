@@ -8,6 +8,7 @@ test('a shop answer is online, including a refusal, and a proxy miss is not', ()
   assert.equal(shopAnswered(200, '{"ok":true}'), true);
   assert.equal(shopAnswered(401, '{"code":"SESSION_SUPERSEDED"}'), true);
   assert.equal(shopAnswered(404, '{"code":"NOT_FOUND"}'), true);
+  assert.equal(shopAnswered(200, '{"ok":true,"offline":true}'), false);
   assert.equal(shopAnswered(502, '{"code":"UPSTREAM_UNREACHABLE","error":"The shop server could not be reached."}'), false);
   assert.equal(shopAnswered(502, '{"code":"OFFLINE","error":"The shop did not answer from this window. Try again."}'), false);
   assert.equal(shopAnswered(0, ''), false);

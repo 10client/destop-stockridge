@@ -140,4 +140,27 @@ The browser outbox is `public/js/store.js`. The desktop till replaces it with `p
 | destop | `08d5fda` | Live token marks online; count sales saved on the till | No. The Offline symptom remained |
 | stockridge | `0112e15` | Retry the dashboard once; export `noteReachable` | No. The Offline symptom remained |
 
-The screen rule is stockridge `ca9b475`. The desktop rule is the commit that contains this file, which is after `08d5fda`. The rebuild must contain both. Do not rebuild from `08d5fda` or `0112e15` again.
+The screen rule that stopped a single miss flipping the chip is stockridge `ca9b475`, plus the later screen commit that contains `reachability.js` rejecting a saved-till `offline: true` body. The desktop rule is the commit that contains this file. The rebuild must contain both. Do not rebuild from `08d5fda`, `0112e15`, `377048e`, or `ca9b475` alone.
+
+## Every place that can say Offline
+
+The person being online means the shop answered. It does not mean the browser has a network icon. These are the only writers and the only sentences.
+
+| What you see | Route or event | Function | What it represents | Correct when |
+| --- | --- | --- | --- | --- |
+| Chip text **Offline** | none; it reads the flag | `updateNetChrome` in `public/js/app.js` | `SR.api.isOnline()` is false | The shop has missed `/api/health` twice |
+| Yellow bar under the chip | same flag | `updateNetChrome` | Work will be saved on this till | Same as the chip |
+| Login label **No connection** | same flag | `updateNetChrome` | The sign-in form thinks the shop is down | Same as the chip |
+| Dashboard **Offline —** | `GET /api/dashboard` failed | `refresh` then `paint` in `public/js/views/dashboard.js` | That screen used the saved figures | `isOnline()` is false. If the shop answered, this banner must not be there |
+| **You are offline.** | any failed `/api/` call | `errorBlock` in `public/js/ui.js`, patched by `patchErrorBlock` in `desktop-production.js` | The error was classified as a miss | The shop has missed twice. A shop answer must not keep this sentence |
+| Screen banners **Offline —** on stock, sales, customers, and the other lists | that screen's `GET /api/...` | each view's `load` / `render` catching `err.isOffline` | That one call was classified as a miss | Same. `api.request` must not throw `OFFLINE` after one miss |
+| POS **Offline. Sales completed here are stored on this device** | `GET` search and checkout | `public/js/views/pos.js` | `isOnline()` is false, or the sale call was a miss | A sale the shop did not take is still saved. The sentence must not show while the shop is answering |
+| Sync does not upload | `POST /api/sync` | `push` and `pull` in `public/js/sync.js` | They return immediately when `isOnline()` is false | The flag must be true after a shop answer, or a saved sale never leaves the till |
+| Sign-in sentence **Signed in offline** | `POST /api/auth/login` | `login` → `signInOffline` in `desktop-production.js` | The shop login did not return a token, and `/api/health` also missed | Only when both hosts miss. A saved person can still open the till. The PIN is not stored |
+| Saved-till `200` with `offline: true` | `POST /api/auth/login`, `GET /api/auth/me` | `answerWhenShopDown` in `lib/offline-door.js` | The proxy got no shop answer, so this computer answered from the saved till | Must not be treated as the shop. `sessionHeld` returns null on `body.offline` |
+| Proxy `502` `UPSTREAM_UNREACHABLE` | any `/api/` the shop did not answer | `unreachable` in `electron/server.js` | Every path failed: IPv4, default, insecure certificate, Chromium, and the other host | A real shop status, including 401 and 404, must be returned instead |
+| Window `502` `OFFLINE` | a window `fetch` that threw | `shopMissResponse` in `desktop-production.js` | The window did not get a response from the proxy on this computer | Not a shop answer. The chip still waits for two health misses |
+
+`navigator.onLine` and the browser `offline` event are not in that table. They are not the shop. `api.js` does not start from them, and `pos.js` does not read them.
+
+A status from 1 to 499 is the shop, except a body that is the proxy-miss sentence, an HTML block, or `"offline": true`. `shopAnswered` in `public/js/reachability.js` and `shopSpoke` in `electron/server.js` are that test. `shouldMarkOffline` requires two probe misses. `setOnline` is the only flag writer. `noteReachable(true)` is how a live sign-in sets it, because desktop login does not go through `api.request`.

@@ -25,6 +25,9 @@
   // A saved till is open because the shop login did not stick. A later refusal
   // of the old token must not sign that till out or show the other-device notice.
   let localSessionOnly = false;
+  // null until the shop itself answers or misses twice. The browser flag is not this.
+  let shopUp = null;
+  let healthMisses = 0;
   const deviceReady = (async function pinDevice() {
     let id = null;
     let label = 'Windows till';
@@ -82,6 +85,63 @@
     return raw;
   }
 
+  function shopBodyAnswered(status, text) {
+    if (global.SRReach && global.SRReach.shopAnswered) return global.SRReach.shopAnswered(status, text);
+    const code = Number(status);
+    const body = String(text || '');
+    if (!Number.isFinite(code) || code <= 0 || code >= 500) return false;
+    if (/UPSTREAM_UNREACHABLE|shop server could not be reached|did not answer from this window/i.test(body)) return false;
+    if (/"offline"\s*:\s*true/.test(body)) return false;
+    return true;
+  }
+
+  function correctOfflineChrome() {
+    if (shopUp !== true) return;
+    const chip = document.getElementById('net-chip');
+    const text = document.getElementById('net-chip-text');
+    if (chip) chip.dataset.state = 'online';
+    if (text && text.textContent === 'Offline') text.textContent = 'Online';
+    const bar = document.getElementById('offline-bar');
+    if (bar) bar.hidden = true;
+    const loginNet = document.getElementById('login-net');
+    if (loginNet && loginNet.textContent === 'No connection') loginNet.textContent = 'Connected';
+    document.querySelectorAll('.alert-warn, .alert-danger').forEach((el) => {
+      const sentence = String(el.textContent || '');
+      if (/^Offline —/.test(sentence) || /^You are offline\./.test(sentence)) el.remove();
+    });
+  }
+
+  function installOnlineWrap() {
+    const api = global.SR && global.SR.api;
+    if (!api || !api.isOnline || api.isOnline.shopWrapped) return;
+    const orig = api.isOnline.bind(api);
+    function isOnline() {
+      if (shopUp === true) return true;
+      if (shopUp === false) return false;
+      return orig();
+    }
+    isOnline.shopWrapped = true;
+    api.isOnline = isOnline;
+  }
+
+  function noteShopResponse(status, text, url) {
+    const answered = shopBodyAnswered(status, text);
+    if (answered) {
+      shopUp = true;
+      healthMisses = 0;
+      if (global.SR && global.SR.api && global.SR.api.noteReachable) global.SR.api.noteReachable(true);
+      installOnlineWrap();
+      correctOfflineChrome();
+      return;
+    }
+    if (String(url || '').indexOf('/api/health') === -1) return;
+    healthMisses += 1;
+    if (healthMisses >= 2) {
+      shopUp = false;
+      installOnlineWrap();
+    }
+  }
+
   function shopMissResponse() {
     return new Response(JSON.stringify({
       error: 'The shop did not answer from this window. Try again.',
@@ -104,9 +164,11 @@
       const next = Object.assign({}, init || {}, { headers });
       const isLogin = String(url).indexOf('/api/auth/login') !== -1;
       return origFetch(target, next).then(async (res) => {
-        if (!res || res.status !== 401) return res;
+        if (!res) return res;
         const copy = res.clone();
         const text = await copy.text().catch(() => '');
+        noteShopResponse(res.status, text, url);
+        if (res.status !== 401) return res;
         let final = res;
         if (text.includes('SESSION_SUPERSEDED')) {
           const againId = deviceIdNow();
@@ -114,6 +176,8 @@
             const retryHeaders = new Headers(headers);
             retryHeaders.set('X-Device-Id', againId);
             final = await origFetch(target, Object.assign({}, next, { headers: retryHeaders }));
+            const againText = await final.clone().text().catch(() => '');
+            noteShopResponse(final.status, againText, url);
           }
         }
         // A 401 is the shop answering. Do not rewrite it as a miss. That made a
@@ -129,6 +193,7 @@
         try {
           return await origFetch(target, Object.assign({}, next, { signal: controller.signal }));
         } catch (again) {
+          noteShopResponse(502, '{"code":"OFFLINE"}', url);
           return shopMissResponse();
         } finally {
           clearTimeout(timer);
@@ -141,7 +206,12 @@
     const ui = global.SR && global.SR.ui;
     if (!ui || !ui.errorBlock || ui.errorBlock.desktopWrapped) return;
     const orig = ui.errorBlock.bind(ui);
-    function errorBlock(err, opts) {
+      function errorBlock(err, opts) {
+      if (shopUp === true) {
+        const up = new Error((err && err.message) || 'This screen did not load. Try again.');
+        up.code = 'SHOP_READ_FAILED';
+        return orig(up, opts);
+      }
       const message = String((err && err.message) || '');
       const missed = /failed to fetch/i.test(message)
         || (err && (err.isOffline || err.code === 'OFFLINE' || err.code === 'UPSTREAM_UNREACHABLE'));
@@ -326,8 +396,13 @@
           },
           cache: 'no-store',
         });
-        if (res.ok) return true;
         const text = await res.text().catch(() => '');
+        let body = {};
+        try { body = text ? JSON.parse(text) : {}; } catch (err) { body = {}; }
+        // The saved-till door answers 200 offline:true when the proxy missed.
+        // That is not the shop holding this session.
+        if (body && body.offline) return null;
+        if (res.ok) return true;
         if (text.includes('SESSION_SUPERSEDED') || text.includes('SESSION_REVOKED') || text.includes('NO_TOKEN') || text.includes('BAD_TOKEN')) return false;
         return null;
       } catch (err) {
@@ -467,6 +542,8 @@
 
   whenReady(() => {
     patchErrorBlock();
+    installOnlineWrap();
+    setInterval(() => { installOnlineWrap(); correctOfflineChrome(); }, 1000);
     if (global.SR && global.SR.api && global.SR.api.emit && !global.SR.api.emit.desktopWrapped) {
       const emit = global.SR.api.emit.bind(global.SR.api);
       function wrappedEmit(event, detail) {

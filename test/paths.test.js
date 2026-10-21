@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { stockridgeRoot, workerOrigin, SAMPLE_ORIGIN } = require('../electron/paths');
+const { stockridgeRoot, workerOrigin, siblingOrigin, SAMPLE_ORIGIN } = require('../electron/paths');
 const { PWA_ORIGIN, OFFICE_ORIGIN, SHARED_DATABASE } = require('../lib/shared-books');
 
 test('the PWA, the desktop till, and the Android app name the same database', () => {
@@ -14,6 +14,12 @@ test('the PWA, the desktop till, and the Android app name the same database', ()
   assert.equal(SHARED_DATABASE, 'stockridge-10client.aws-eu-north-1.turso.io');
   assert.match(android, new RegExp(PWA_ORIGIN.replace(/[.]/g, '\\.')));
   assert.equal(workerOrigin({}), PWA_ORIGIN);
+});
+
+test('the sample host and the office host are the same books, so either can answer', () => {
+  assert.equal(siblingOrigin(PWA_ORIGIN), OFFICE_ORIGIN);
+  assert.equal(siblingOrigin(OFFICE_ORIGIN), PWA_ORIGIN);
+  assert.equal(siblingOrigin('https://client.example'), null);
 });
 
 test('development reads the sibling checkout and the sample Worker', () => {

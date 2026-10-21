@@ -21,4 +21,13 @@ function workerOrigin({ envOrigin, bakedOrigin, savedOrigin }) {
   return SAMPLE_ORIGIN;
 }
 
-module.exports = { stockridgeRoot, workerOrigin, SAMPLE_ORIGIN, PRODUCTION_ORIGIN };
+// The sample host and the office host are the same books. If one path does
+// not answer, the till may ask the other. A client's own baked host has no twin.
+function siblingOrigin(origin) {
+  const value = String(origin || '');
+  if (value.includes('sample.stockridge.workers.dev')) return OFFICE_ORIGIN;
+  if (value.includes('stockridge.stockridge.workers.dev')) return PWA_ORIGIN;
+  return null;
+}
+
+module.exports = { stockridgeRoot, workerOrigin, siblingOrigin, SAMPLE_ORIGIN, PRODUCTION_ORIGIN };
