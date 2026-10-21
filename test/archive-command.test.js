@@ -13,9 +13,9 @@ test('the archive command keeps a spaced Windows path in one argument', () => {
     sign: false,
   });
   assert.equal(spec.shell, false);
-  assert.equal(spec.args.length, 2);
+  assert.equal(spec.args.length, 4);
   assert.equal(spec.args[0], path.join(root, 'node_modules', 'electron-builder', 'cli.js'));
   assert.match(spec.args[0], /Mohammed Hayatudeen/);
   assert.equal(spec.args.includes('Mohammed'), false);
-  assert.equal(spec.args[1], '--config.win.signAndEditExecutable=false');
+  assert.deepEqual(spec.args.slice(1), ['--win', 'dir', '--config.win.signAndEditExecutable=false']);
 });

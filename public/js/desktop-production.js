@@ -392,11 +392,27 @@
         return null;
       }
     }
+    async function shopAnswers() {
+      try {
+        const res = await fetch('/api/health/ping', { method: 'GET', cache: 'no-store' });
+        const text = await res.text().catch(() => '');
+        if (res.status >= 500 || /UPSTREAM_UNREACHABLE|shop server could not be reached|did not answer/i.test(text)) return false;
+        return res.status > 0 && res.status < 500;
+      } catch (err) {
+        return false;
+      }
+    }
     async function login(creds) {
       localSessionOnly = false;
       await deviceReady;
-      const live = await takeLive(creds);
-      if (live) return live;
+      let live = await takeLive(creds);
+      if (!live && await shopAnswers()) live = await takeLive(creds);
+      if (live && live.token && !live.offline) return live;
+      if (await shopAnswers()) {
+        const stuck = new Error('The shop is up, but this sign-in did not finish. Try again.');
+        stuck.code = 'LOGIN_NOT_STUCK';
+        throw stuck;
+      }
       const offline = await signInOffline(creds);
       // The saved token is not this sign-in. If the shop still accepts it,
       // stay on that session. If the shop says it was replaced, sign in there

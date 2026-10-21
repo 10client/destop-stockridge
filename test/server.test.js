@@ -6,7 +6,8 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { startServer, desktopIndex, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin } = require('../electron/server');
+const zlib = require('node:zlib');
+const { startServer, desktopIndex, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream } = require('../electron/server');
 
 test('the shop request does not forward the local window address', () => {
   const headers = browserHeaders({
@@ -39,6 +40,16 @@ test('a login answer is a shop token or a PIN refusal, not an HTML block', () =>
   const source = fs.readFileSync(path.join(__dirname, '../electron/server.js'), 'utf8');
   assert.doesNotMatch(source, /sr-shop-direct/);
   assert.doesNotMatch(source, /Promise\.any/);
+});
+
+test('a gzip shop login is a real sign-in, not an expired offline session', () => {
+  const gzip = zlib.gzipSync(Buffer.from('{"token":"live-token","profile":{"username":"bola"}}'));
+  const decoded = decodeUpstream({ status: 200, headers: { 'content-encoding': 'gzip', 'content-length': String(gzip.length) }, body: gzip });
+  assert.equal(JSON.parse(decoded.body.toString()).token, 'live-token');
+  assert.equal(loginAnswer(decoded).status, 200);
+  const headers = responseForWindow(decoded.headers, decoded.body);
+  assert.equal(headers['content-encoding'], undefined);
+  assert.equal(headers['content-length'], String(decoded.body.length));
 });
 
 test('a decoded shop answer is not labelled gzip, which the window reports as Failed to fetch', () => {

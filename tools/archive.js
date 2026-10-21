@@ -14,7 +14,7 @@ function archiveCommand({ root, execPath, sign = false } = {}) {
   const cli = path.join(root, 'node_modules', 'electron-builder', 'cli.js');
   return {
     command: execPath,
-    args: [cli, sign ? '--config.win.signAndEditExecutable=true' : '--config.win.signAndEditExecutable=false'],
+    args: [cli, '--win', 'dir', sign ? '--config.win.signAndEditExecutable=true' : '--config.win.signAndEditExecutable=false'],
     shell: false,
   };
 }

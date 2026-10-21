@@ -22,7 +22,9 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 8. Save every person the shop accepts on this till. Do not keep only the last person. Do not invent a person the shop has never accepted here. Offline sign-in checks any saved person, not only the last one.
 
-9. A login must get a real shop answer before the window gives up. Do not turn that call into a fake miss. Do not race the window against the Worker. One login request at a time, so the same account is not signed out of itself.
+9. A login must get a real shop answer before the window gives up. Do not turn that call into a fake miss. Do not race the window against the Worker. One login request at a time, so the same account is not signed out of itself. A gzip shop answer is still a shop answer. Decode it before deciding the sign-in failed.
+
+10. Do not build the portable exe over `dist\StockRidge-0.1.0-win-x64.exe`. That file stays locked by the open program or the virus scanner, and the build waits until it is cancelled. Build the unpacked program. Open `dist\win-unpacked\StockRidge.exe`. Do not open the old portable exe.
 
 ## What happened, in order
 
@@ -62,9 +64,19 @@ A different username showed **The shop did not answer from this window. Try the 
 
 Fix: a login waits for a real shop answer, and a path that returns HTML or a block is not treated as that answer. When the shop accepts a person, that person is saved before the window reads the answer. Other saved people stay saved. Either saved person can sign in when the shop is down. The PIN is not stored. A person the shop has never accepted on this till is not invented.
 
+### Online, then "Signed in offline. The saved sign-in has expired"
+
+A connected sign-in still said **Signed in offline. The saved sign-in has expired, so these sales stay on this till until you sign in while connected.** The shop had answered. Node left the answer compressed. The till could not read the token, treated the call as a miss, and opened the old saved sign-in. That saved token had expired, so the screen said to connect even though the person was already online.
+
+The build did not finish either. It waited because `dist\StockRidge-0.1.0-win-x64.exe` was locked, then it was cancelled. The new program was not what they opened.
+
+Fix: decode a gzip shop answer before judging the login, and do not open an expired saved sign-in when the shop is up. Build the unpacked program. Do not write the locked portable exe again.
+
 ## Before the next change
 
 - If the screen says **Failed to fetch** or **That failed.**, the window called the wrong host, or the proxy mislabelled the body. Do not add a direct Worker fetch to "fix" it.
 - If the screen says the account is on another device right after sign-in on this till, check the device id and the old token. Do not allow two live sessions to silence it.
 - If a rebuild does not change what the window runs, the screen cache is hiding the shipped file. The shipped file must win.
 - If a different person sees the shop-did-not-answer sentence, they have not been saved on this till yet. Save them when the shop accepts them. Do not keep only the last person, and do not store the PIN to skip the shop.
+- If a connected sign-in says the saved sign-in has expired, the shop answer was not read. Do not open the expired saved till while the shop is up.
+- If the build says the output file is locked, do not wait on the portable exe. Build the unpacked program and open `dist\win-unpacked\StockRidge.exe`.

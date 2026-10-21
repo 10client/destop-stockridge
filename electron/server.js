@@ -6,6 +6,7 @@ const http = require('node:http');
 const https = require('node:https');
 const fs = require('node:fs');
 const path = require('node:path');
+const zlib = require('node:zlib');
 const { hideInstallChrome } = require('./hide-install');
 
 const MIME = Object.freeze({
@@ -283,7 +284,7 @@ function nodeUpstream(target, transport, url, method, headers, body, { family = 
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       method,
       path: url.pathname + url.search,
-      headers: withBodyLength(Object.assign({ 'user-agent': CHROME_UA }, headers || {}), body),
+      headers: withBodyLength(Object.assign({ 'user-agent': CHROME_UA, 'accept-encoding': 'identity' }, headers || {}, { 'accept-encoding': 'identity' }), body),
       timeout,
       rejectUnauthorized,
     };
@@ -384,6 +385,30 @@ function electronLostDevice(upstream, deviceId) {
 // A Cloudflare block or an HTML page is not a login. A token is. A PIN
 // refusal is. Anything else is a path that did not answer, so the next path
 // may still store this person.
+// Node does not decode gzip. A compressed shop login is not a failed login.
+// Treating it as a miss opens the saved till and says the sign-in has expired
+// even though the person is online. Decode first, then judge the answer.
+function decodeUpstream(upstream) {
+  if (!upstream || upstream.body == null) return upstream;
+  const buf = Buffer.isBuffer(upstream.body) ? upstream.body : Buffer.from(upstream.body || '');
+  const headers = Object.assign({}, upstream.headers || {});
+  if (!bodyIsGzip(buf)) {
+    delete headers['content-encoding'];
+    delete headers['Content-Encoding'];
+    return { status: upstream.status, headers, body: buf };
+  }
+  try {
+    const plain = zlib.gunzipSync(buf);
+    delete headers['content-encoding'];
+    delete headers['Content-Encoding'];
+    delete headers['content-length'];
+    delete headers['Content-Length'];
+    return { status: upstream.status, headers, body: plain };
+  } catch (err) {
+    return { status: upstream.status, headers: upstream.headers, body: buf };
+  }
+}
+
 function loginAnswer(upstream) {
   if (!upstream || upstream.status == null) return null;
   const status = Number(upstream.status);
@@ -430,19 +455,20 @@ function acceptedLogin(requestBody, upstream) {
 async function loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body) {
   const tries = [];
   if (target.protocol === 'https:' && electronNet()) {
-    tries.push(() => netUpstream(target, url, method, pageHeaders, body, { timeout: 10000 }));
+    tries.push(() => netUpstream(target, url, method, pageHeaders, body, { timeout: 8000 }));
   }
-  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: 10000 }));
+  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { timeout: 8000 }));
+  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: 8000 }));
   if (target.protocol === 'https:') {
     tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, {
       family: 4,
       rejectUnauthorized: false,
-      timeout: 8000,
+      timeout: 6000,
     }));
   }
   for (const attempt of tries) {
     try {
-      const upstream = loginAnswer(await attempt());
+      const upstream = loginAnswer(decodeUpstream(await attempt()));
       if (upstream) return upstream;
     } catch (err) { /* this path did not answer a login */ }
   }
@@ -492,8 +518,9 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin) {
     }
     if (upstream) {
       if (res.headersSent) return;
-      res.writeHead(upstream.status, responseForWindow(upstream.headers, upstream.body));
-      res.end(upstream.body);
+      const plain = decodeUpstream(upstream);
+      res.writeHead(plain.status, responseForWindow(plain.headers, plain.body));
+      res.end(plain.body);
       return;
     }
     const local = localDoor(offlineDoor, method, url, body);
@@ -505,4 +532,4 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin) {
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream };
