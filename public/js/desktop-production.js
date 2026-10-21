@@ -407,7 +407,12 @@
       await deviceReady;
       let live = await takeLive(creds);
       if (!live && await shopAnswers()) live = await takeLive(creds);
-      if (live && live.token && !live.offline) return live;
+      if (live && live.token && !live.offline) {
+        localSessionOnly = false;
+        if (SR.api.noteReachable) SR.api.noteReachable(true);
+        else if (SR.api.emit) SR.api.emit('net', { online: true });
+        return live;
+      }
       if (await shopAnswers()) {
         const stuck = new Error('The shop is up, but this sign-in did not finish. Try again.');
         stuck.code = 'LOGIN_NOT_STUCK';

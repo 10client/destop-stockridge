@@ -492,20 +492,23 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin) {
         try { onAcceptedLogin(accepted); } catch (err) { /* the shop already accepted this person */ }
       }
     } else {
+      // A read must answer before the window's 20 second wait. Login is allowed
+      // longer. If this read is still trying when the window gives up, a
+      // connected sign-in is painted as offline.
       if (target.protocol === 'https:' && electronNet()) {
         try {
-          upstream = await netUpstream(target, url, method, pageHeaders, body);
+          upstream = await netUpstream(target, url, method, pageHeaders, body, { timeout: 5000 });
         } catch (err) {
           upstream = null;
         }
       }
       if (electronLostDevice(upstream, deviceId)) upstream = null;
       const nodeTries = [
-        () => nodeUpstream(target, transport, url, method, nodeHeaders, body),
-        () => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4 }),
+        () => nodeUpstream(target, transport, url, method, nodeHeaders, body, { timeout: 5000 }),
+        () => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: 4000 }),
       ];
       if (target.protocol === 'https:') {
-        nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { rejectUnauthorized: false }));
+        nodeTries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { rejectUnauthorized: false, timeout: 4000 }));
       }
       for (const attempt of nodeTries) {
         if (upstream) break;

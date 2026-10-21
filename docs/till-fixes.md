@@ -26,6 +26,8 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 10. Do not build the portable exe over `dist\StockRidge-0.1.0-win-x64.exe`. That file stays locked by the open program or the virus scanner, and the build waits until it is cancelled. Build the unpacked program. Open `dist\win-unpacked\StockRidge.exe`. Do not open the old portable exe.
 
+11. A connected sign-in is online. Do not paint the offline dashboard because one read gave up before the shop answered. A sale made while the shop is down is saved on this till and counted there. It uploads when the line returns.
+
 ## What happened, in order
 
 ### Failed to fetch, first time
@@ -72,6 +74,12 @@ The build did not finish either. It waited because `dist\StockRidge-0.1.0-win-x6
 
 Fix: decode a gzip shop answer before judging the login, and do not open an expired saved sign-in when the shop is up. Build the unpacked program. Do not write the locked portable exe again.
 
+### Online login, then the offline dashboard
+
+Sign-in reached the shop. The dashboard still said **Offline — these figures are computed from this device's last sync, not from the office. Sales made here are counted in the queue below.** The dashboard read gives up at 20 seconds. The proxy was still trying the shop, so the miss was painted as offline. The sales saved on the till were not in those figures.
+
+Fix: a shop read answers before that wait. If the first read misses and the shop still answers, read it again before painting the saved figures. A live sign-in marks the till online. A sale the shop did not take is saved here and counted. It uploads when the line returns.
+
 ## Before the next change
 
 - If the screen says **Failed to fetch** or **That failed.**, the window called the wrong host, or the proxy mislabelled the body. Do not add a direct Worker fetch to "fix" it.
@@ -80,3 +88,4 @@ Fix: decode a gzip shop answer before judging the login, and do not open an expi
 - If a different person sees the shop-did-not-answer sentence, they have not been saved on this till yet. Save them when the shop accepts them. Do not keep only the last person, and do not store the PIN to skip the shop.
 - If a connected sign-in says the saved sign-in has expired, the shop answer was not read. Do not open the expired saved till while the shop is up.
 - If the build says the output file is locked, do not wait on the portable exe. Build the unpacked program and open `dist\win-unpacked\StockRidge.exe`.
+- If a connected sign-in shows the offline dashboard, the read gave up too soon. Do not leave that banner up when the shop answers. A sale made while the shop is down must stay saved on this till.
