@@ -80,7 +80,18 @@
       const headers = new Headers((init && init.headers) || {});
       if (id) headers.set('X-Device-Id', id);
       else headers.delete('X-Device-Id');
-      return origFetch(input, Object.assign({}, init || {}, { headers }));
+      const next = Object.assign({}, init || {}, { headers });
+      return origFetch(input, next).then(async (res) => {
+        if (!res || res.status !== 401) return res;
+        const copy = res.clone();
+        const text = await copy.text().catch(() => '');
+        if (!text.includes('SESSION_SUPERSEDED')) return res;
+        const againId = deviceIdNow();
+        if (!againId) return res;
+        const retryHeaders = new Headers(headers);
+        retryHeaders.set('X-Device-Id', againId);
+        return origFetch(input, Object.assign({}, next, { headers: retryHeaders }));
+      });
     };
   }
 
@@ -224,11 +235,36 @@
     const SR = global.SR;
     if (!SR || !SR.api || !SR.api.login || SR.api.login.offlineWrapped) return;
     const online = SR.api.login.bind(SR.api);
+    async function sessionStillHere(token) {
+      await deviceReady;
+      const id = deviceIdNow();
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+            ...(id ? { 'X-Device-Id': id } : {}),
+          },
+          cache: 'no-store',
+        });
+        if (res.ok) return true;
+        const text = await res.text();
+        return !text.includes('SESSION_SUPERSEDED');
+      } catch (err) {
+        return true;
+      }
+    }
     async function login(creds) {
       await deviceReady;
       try {
-        const out = await online(creds);
+        let out = await online(creds);
         await rememberOnline(creds, out);
+        // Sign-in just created this session. If the shop then says another
+        // device has it, take it back once. The PIN stays in this call only.
+        if (out && out.token && !out.offline && !(await sessionStillHere(out.token))) {
+          out = await online(creds);
+          await rememberOnline(creds, out);
+        }
         return out;
       } catch (err) {
         if (!shopUnreachable(err)) throw err;

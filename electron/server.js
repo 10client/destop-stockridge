@@ -327,19 +327,36 @@ function localDoor(offlineDoor, method, url, body) {
   }
 }
 
+function responseText(upstream) {
+  if (!upstream || upstream.body == null) return '';
+  return Buffer.isBuffer(upstream.body) ? upstream.body.toString('utf8') : String(upstream.body);
+}
+
+// Chromium's net.request can accept the call and still omit x-device-id. The
+// shop then treats this till as a different device and signs it out. Node
+// sends the header we set. A real other-device sign-in still answers 401.
+function electronLostDevice(upstream, deviceId) {
+  if (!deviceId || !upstream || Number(upstream.status) !== 401) return false;
+  return responseText(upstream).includes('SESSION_SUPERSEDED');
+}
+
 function proxy(req, res, target, transport, url, offlineDoor) {
   readBody(req).then(async (body) => {
     const method = req.method || 'GET';
+    const pageHeaders = browserHeaders(req.headers);
+    const deviceId = pageHeaders['x-device-id'] || '';
     let upstream = null;
     if (target.protocol === 'https:' && electronNet()) {
       try {
-        upstream = await netUpstream(target, url, method, browserHeaders(req.headers), body);
+        upstream = await netUpstream(target, url, method, pageHeaders, body);
       } catch (err) {
         upstream = null;
       }
     }
+    if (electronLostDevice(upstream, deviceId)) upstream = null;
     const nodeHeaders = forwardHeaders(req.headers, { host: target.host });
     nodeHeaders['user-agent'] = CHROME_UA;
+    if (deviceId) nodeHeaders['x-device-id'] = deviceId;
     const nodeTries = [
       () => nodeUpstream(target, transport, url, method, nodeHeaders, body),
       () => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4 }),
@@ -370,4 +387,4 @@ function proxy(req, res, target, transport, url, offlineDoor) {
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice };

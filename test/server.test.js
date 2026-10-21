@@ -6,7 +6,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { startServer, desktopIndex, browserHeaders } = require('../electron/server');
+const { startServer, desktopIndex, browserHeaders, electronLostDevice } = require('../electron/server');
 
 test('the shop request does not forward the local window address', () => {
   const headers = browserHeaders({
@@ -21,6 +21,14 @@ test('the shop request does not forward the local window address', () => {
   assert.equal(headers['content-length'], undefined);
   assert.equal(headers['content-type'], 'application/json');
   assert.equal(headers['x-device-id'], 'till-1');
+});
+
+test('a shop sign-out from the Chromium path is asked again when this till sent a device id', () => {
+  const kicked = { status: 401, body: Buffer.from('{"code":"SESSION_SUPERSEDED"}') };
+  assert.equal(electronLostDevice(kicked, 'till-1'), true);
+  assert.equal(electronLostDevice(kicked, ''), false);
+  assert.equal(electronLostDevice({ status: 200, body: Buffer.from('{}') }, 'till-1'), false);
+  assert.equal(electronLostDevice({ status: 401, body: Buffer.from('{"code":"BAD_TOKEN"}') }, 'till-1'), false);
 });
 
 test('index injection loads the SQLite bridge and does not register a service worker', () => {
@@ -47,7 +55,7 @@ test('index injection loads the SQLite bridge and does not register a service wo
 test('serves the UI from the checkout and proxies /api without accepting a path escape', async () => {
   const upstream = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ path: req.url, auth: req.headers.authorization || null }));
+    res.end(JSON.stringify({ path: req.url, auth: req.headers.authorization || null, device: req.headers['x-device-id'] || null }));
   });
   await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
   const upPort = upstream.address().port;
@@ -69,10 +77,11 @@ test('serves the UI from the checkout and proxies /api without accepting a path 
     assert.doesNotMatch(html, /sr-shop-direct/);
     assert.doesNotMatch(html, /Failed to fetch/);
     assert.doesNotMatch(html, /serviceWorker\.register/);
-    const api = await fetch(desktop.url + 'api/health', { headers: { Authorization: 'Bearer test-token' } });
+    const api = await fetch(desktop.url + 'api/health', { headers: { Authorization: 'Bearer test-token', 'X-Device-Id': 'till-1' } });
     const body = await api.json();
     assert.equal(body.path, '/api/health');
     assert.equal(body.auth, 'Bearer test-token');
+    assert.equal(body.device, 'till-1');
     const escaped = await fetch(desktop.url + '..%2fpackage.json');
     assert.equal(escaped.status, 404);
     const health = await fetch(desktop.url + '__desktop/health');
