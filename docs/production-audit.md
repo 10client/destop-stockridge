@@ -141,7 +141,17 @@ The live shop hosts were last confirmed on worker stamp `ea33075`. None of the t
 - **To:** the shell is opened before the toast. A 401 in the 12 seconds after that sign-in does not pull the login page back. Sync starts after the shell is open, not inside `load`. `#login-screen[hidden]` is `display: none !important`, and `showShell` also sets that inline.
 - **Why:** a confirmed sign-in that does not leave the form is not a sign-in. One account, one device still applies after those 12 seconds.
 - **Functions:** `doLogin`, `showShell`, `showLogin`, `handleAuthFailure` in `public/js/app.js`. `wrappedLoad` in `desktop-production.js` no longer syncs inside load. `leaveLoginIfEntered` hides the form if the welcome toast is up and a user is set.
-- **Outcome:** **Not confirmed.** This row is the change that contains this file. Do not show **Welcome** if `SR.state.user` was not set. Do not lengthen the 12 seconds into a second live session.
+- **Outcome:** **Partial.** They confirmed the login page now changes and they enter the application. The opened program was not checked against the hash. After those 12 seconds, a page change still signed them out, and the save chip stayed on **Saving…**. That is row 11. Do not show **Welcome** if `SR.state.user` was not set. Do not lengthen the 12 seconds into a second live session.
+
+### 11. Saving stays on Saving, and a page change signs them out
+
+- **Symptom:** after the login page finally changed, an offline save showed **Saving…** and did not finish, and opening another page signed them out.
+- **Routes:** `POST /api/sales`, `POST /api/sync/pull`, and every page `GET /api/...`. A 401 `NO_TOKEN` or `SESSION_SUPERSEDED` on one proxy path was kept, so the next path was never asked. `api.request` then emitted `auth` for every 401. After the 12 second grace, `handleAuthFailure` cleared the token and called `showLogin`. `runOnce` set `running` and, if the pull threw, never told the chip it had stopped. `completeSale` waited on the shop before writing the outbox, so a miss that was not classified as offline threw the sale away.
+- **From:** any 401 signed the till out. A sale was written only after the shop post failed in a way the till already called offline.
+- **To:** a dropped token or a device mismatch on one path is not the last answer. The next path is asked. The shell signs out only for a revoked, expired, or gone session, or a superseded session that `/api/auth/me` confirms. A page 401 does not clear the token. The sale is written to the outbox before the shop is asked. If the shop takes it, that row is marked synced. If the shop refuses the sale itself, the row is removed and the cashier sees the refusal. If the shop does not answer, the row stays and the offline receipt is shown. `runOnce` always clears **Saving…** when the cycle ends, including when the pull fails.
+- **Why:** a page change is not a second device. A sale the cashier has already taken must exist on this till before the shop is asked. One account, one device still signs this till out when `/api/auth/me` confirms the session was replaced.
+- **Functions:** `sessionBlip` and `askShopRead` in `electron/server.js`. `handleAuthFailure` and `render` in `public/js/app.js`. `request` in `public/js/api.js`. `runOnce` in `public/js/sync.js`. `completeSale` in `public/js/views/pos.js`.
+- **Outcome:** **Not confirmed.** Do not treat a page 401 as a sign-out. Do not restore rewriting a shop 401 as `502 OFFLINE`. Do not leave the chip on **Saving…** after the cycle has stopped.
 
 ## What each screen reads
 
@@ -167,7 +177,7 @@ The chip, the bar, and the login line are not separate checks. They all read `SR
 3. Open `dist\win-unpacked\StockRidge.exe`. Close the old window first.
 4. Sign in on a connection. The login form must disappear before the welcome toast. The chip must say Online. The dashboard must not say Offline.
 5. If the form remains, the opened program is not this commit. Do not add another toast. Check that the served `app.js` contains `loginGraceUntil`.
-6. Take a sale with the shop unreachable. It must save on this till. It must upload after the chip returns to Online.
+6. Take a sale with the shop unreachable. It must save on this till and leave **Saving…** when the write finishes. Opening another page must not return the login form. It must upload after the chip returns to Online.
 7. Do not deploy, do not reset a PIN, and do not pull the parent folder, until those checks pass.
 
 ## Not production-ready

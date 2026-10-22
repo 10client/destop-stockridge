@@ -391,6 +391,14 @@ function shopSpoke(upstream) {
   return true;
 }
 
+// A missing token or a device-id mismatch on one path is not the shop's last
+// word. Chromium can drop those headers and still return 401. The next path
+// may keep them. A revoked or expired token is final.
+function sessionBlip(upstream) {
+  const text = responseText(upstream);
+  return /NO_TOKEN|SESSION_SUPERSEDED/.test(text);
+}
+
 function electronLostDevice(upstream, deviceId) {
   if (!deviceId || !upstream || Number(upstream.status) !== 401) return false;
   return responseText(upstream).includes('SESSION_SUPERSEDED');
@@ -518,10 +526,11 @@ async function askShopRead(hostTarget, hostTransport, url, method, pageHeaders, 
         });
       const plain = decodeUpstream(got);
       if (!shopSpoke(plain)) continue;
-      spoke = plain;
-      // Chromium can drop the device id and the shop then says another device.
-      // Keep this 401 only if the next path does not get a real answer.
-      if (!electronLostDevice(plain, deviceId)) return plain;
+      if (sessionBlip(plain) || electronLostDevice(plain, deviceId)) {
+        spoke = plain;
+        continue;
+      }
+      return plain;
     } catch (err) { /* this path did not reach the shop */ }
   }
   return spoke;
@@ -558,6 +567,8 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
       // antivirus inserted, then Chromium, then the other host of the same books.
       // Stop at the first answer the shop itself sent.
       upstream = await askShopRead(target, transport, url, method, pageHeaders, nodeHeaders, body, deviceId);
+      let blip = upstream && sessionBlip(upstream) ? upstream : null;
+      if (blip) upstream = null;
       if (!upstream && other) {
         const otherTransport = other.protocol === 'http:' ? http : https;
         const otherHeaders = forwardHeaders(req.headers, { host: other.host });
@@ -569,9 +580,11 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
             timeout: readBudgets().sibling,
           });
           const plain = decodeUpstream(got);
-          if (shopSpoke(plain)) upstream = plain;
+          if (shopSpoke(plain) && !sessionBlip(plain)) upstream = plain;
+          else if (sessionBlip(plain)) blip = plain;
         } catch (err) { /* the other host did not answer either */ }
       }
+      if (!upstream && blip) upstream = blip;
     }
     if (upstream) {
       if (res.headersSent) return;
@@ -589,4 +602,4 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, shopSpoke };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, shopSpoke, sessionBlip };

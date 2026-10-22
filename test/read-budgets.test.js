@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { readBudgets, shopSpoke } = require('../electron/server');
+const { readBudgets, shopSpoke, sessionBlip } = require('../electron/server');
 
 test('every shop read can use IPv4, the inspected certificate, and the other host', () => {
   const budget = readBudgets('/api/health');
@@ -21,4 +21,11 @@ test('a gateway failure is not the shop, and a refusal is', () => {
   assert.equal(shopSpoke({ status: 502, body: Buffer.from('{"code":"UPSTREAM_UNREACHABLE"}') }), false);
   assert.equal(shopSpoke({ status: 200, body: Buffer.from('{"ok":true,"offline":true}') }), false);
   assert.equal(shopSpoke({ status: 403, body: Buffer.from('<html>blocked</html>') }), false);
+});
+
+test('a dropped token or a device mismatch is not the last answer from one path', () => {
+  assert.equal(sessionBlip({ status: 401, body: Buffer.from('{"code":"NO_TOKEN"}') }), true);
+  assert.equal(sessionBlip({ status: 401, body: Buffer.from('{"code":"SESSION_SUPERSEDED"}') }), true);
+  assert.equal(sessionBlip({ status: 401, body: Buffer.from('{"code":"SESSION_REVOKED"}') }), false);
+  assert.equal(sessionBlip({ status: 200, body: Buffer.from('{"ok":true}') }), false);
 });
