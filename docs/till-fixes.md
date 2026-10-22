@@ -32,6 +32,8 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 13. Write the sale on this till before asking the shop. **Saving…** means a sync cycle is still running. When that cycle ends, including a failed pull, the chip must leave **Saving…**. A sale the shop did not take stays in the outbox. A sale the shop refused is not kept. A sale the shop took is marked synced so it is not sent twice.
 
+14. Do not cut `POST /api/sync/pull` with the 4.5 second screen budget. That abort is how **Saving…** finished as **Not saved** with nothing written. **Not saved** is legitimate only when nothing is on the till, and the detail must say why: the shop has no products or stock, or the shop did not finish sending the catalogue. If products or stock are already stored, the label is **Part saved** or **Saved**, not **Not saved**.
+
 12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence or the saved-till door (`offline: true`). Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
 
 13. A gateway 502 is not the last word. Try IPv4, then the certificate an antivirus inserted, then Chromium on the computer's proxy, then the other host of the same books. Do not set the session proxy to `direct`. Do not count the saved-till door as the shop. Do not paint **You are offline** or **Offline —** on a screen while the shop has answered.
@@ -115,6 +117,12 @@ They confirmed the login form now leaves. The next report was that an offline sa
 The 12 second grace ended. Any 401, including a page read, still cleared the token. One proxy path could return `NO_TOKEN` or `SESSION_SUPERSEDED` when Chromium dropped a header, and that 401 was kept, so the next path was never asked. The save chip shows **Saving…** while a sync cycle is running. If the pull failed, the chip was not told the cycle had stopped. The sale was posted to the shop before it was written on this till, so a miss that was not already called offline threw the sale away.
 
 Fix: ask the next path when one path says the token is missing or the device does not match. Do not sign out unless the session itself is dead, and confirm a replaced session with `/api/auth/me` before leaving the shell. Write the sale to the outbox first. Clear **Saving…** when the cycle ends. One account, one device still stands when that confirmation says the session was replaced.
+
+### Not saved after a save had started
+
+The chip said **Not saved** after **Saving…**. The catalogue pull used the same 4.5 second budget as a screen read. The shop was still building the copy. The proxy destroyed the request. No row was stored, and a missing download stamp was treated as an empty till even when rows were already there.
+
+Fix: give the catalogue download 55 seconds, write products first, and keep a group that already arrived. **Not saved** now means nothing is on the till, and the sentence says which true reason it is. Rows on the till are not called **Not saved**.
 
 ## Before the next change
 

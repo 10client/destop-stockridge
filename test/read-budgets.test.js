@@ -12,6 +12,16 @@ test('every shop read can use IPv4, the inspected certificate, and the other hos
   assert.ok(budget.insecure > 0);
   assert.ok(budget.sibling > 0);
   assert.ok(budget.v4 + budget.node + budget.insecure + budget.net + budget.sibling <= 20000);
+  assert.equal(budget.catalogue, false);
+});
+
+test('a catalogue download is not cut off by the screen read budget', () => {
+  const pull = readBudgets('/api/sync/pull');
+  const screen = readBudgets('/api/dashboard');
+  assert.ok(pull.v4 >= 50000);
+  assert.ok(pull.v4 > screen.v4);
+  assert.equal(pull.catalogue, true);
+  assert.equal(screen.catalogue, false);
 });
 
 test('a gateway failure is not the shop, and a refusal is', () => {

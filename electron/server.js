@@ -497,24 +497,29 @@ async function loginUpstream(target, transport, url, method, pageHeaders, nodeHe
   return null;
 }
 
-// Every shop read uses the same paths. A health check that skipped IPv4 or the
-// antivirus certificate was how a connected till was marked Offline while a
-// later screen could still have answered. The total stays under the window's
-// 20 second wait. The first path that the shop answers ends the list.
-function readBudgets() {
-  return { v4: 4500, node: 3500, insecure: 3500, net: 3500, sibling: 4000 };
+// A screen read stays under the window's 20 second wait. A catalogue download
+// does not. Cutting /api/sync/pull at 4.5 seconds was how Saving finished as
+// Not saved: the shop was still building the copy, the proxy destroyed it, and
+// nothing was written on this till.
+function readBudgets(urlPath) {
+  const path = String(urlPath && urlPath.pathname ? urlPath.pathname : urlPath || '');
+  if (path.indexOf('/api/sync/pull') !== -1 || path.indexOf('/api/sync/push') !== -1) {
+    return { v4: 55000, node: 0, insecure: 55000, net: 0, sibling: 8000, catalogue: true };
+  }
+  return { v4: 4500, node: 3500, insecure: 3500, net: 3500, sibling: 4000, catalogue: false };
 }
 
 async function askShopRead(hostTarget, hostTransport, url, method, pageHeaders, nodeHeaders, body, deviceId) {
-  const budget = readBudgets();
+  const budget = readBudgets(url);
   const httpsHost = hostTarget.protocol === 'https:';
   const plans = [
     { via: 'node', family: 4, timeout: budget.v4 },
-    { via: 'node', timeout: budget.node },
-    httpsHost ? { via: 'node', family: 4, insecure: true, timeout: budget.insecure } : null,
-    httpsHost && electronNet() ? { via: 'net', timeout: budget.net } : null,
+    budget.node ? { via: 'node', timeout: budget.node } : null,
+    httpsHost && budget.insecure ? { via: 'node', family: 4, insecure: true, timeout: budget.insecure } : null,
+    httpsHost && electronNet() && budget.net ? { via: 'net', timeout: budget.net } : null,
   ].filter(Boolean);
   let spoke = null;
+  const started = Date.now();
   for (const plan of plans) {
     try {
       const got = plan.via === 'net'
@@ -531,7 +536,11 @@ async function askShopRead(hostTarget, hostTransport, url, method, pageHeaders, 
         continue;
       }
       return plain;
-    } catch (err) { /* this path did not reach the shop */ }
+    } catch (err) {
+      // A catalogue download that already waited out its budget must not start
+      // another minute. A fast certificate miss still gets the next path.
+      if (budget.catalogue && Date.now() - started > 8000) break;
+    }
   }
   return spoke;
 }
@@ -577,7 +586,7 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
         try {
           const got = await nodeUpstream(other, otherTransport, url, method, otherHeaders, body, {
             family: 4,
-            timeout: readBudgets().sibling,
+            timeout: readBudgets(url).sibling,
           });
           const plain = decodeUpstream(got);
           if (shopSpoke(plain) && !sessionBlip(plain)) upstream = plain;

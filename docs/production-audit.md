@@ -153,6 +153,16 @@ The live shop hosts were last confirmed on worker stamp `ea33075`. None of the t
 - **Functions:** `sessionBlip` and `askShopRead` in `electron/server.js`. `handleAuthFailure` and `render` in `public/js/app.js`. `request` in `public/js/api.js`. `runOnce` in `public/js/sync.js`. `completeSale` in `public/js/views/pos.js`.
 - **Outcome:** **Not confirmed.** Do not treat a page 401 as a sign-out. Do not restore rewriting a shop 401 as `502 OFFLINE`. Do not leave the chip on **Saving…** after the cycle has stopped.
 
+### 12. Saving finishes as Not saved
+
+- **Symptom:** a save starts, then the chip says **Not saved** and the offline catalogue is not on the till.
+- **Routes:** `POST /api/sync/pull`. The screen-read budget cut that call at 4.5 seconds. The shop was still building the catalogue. The proxy destroyed the request. No row was written. `last_pull_at` stayed empty, so the chip said **Not saved** even though the person was signed in and connected.
+- **From:** one pull of every table, abandoned at the screen budget. **Not saved** also appeared when rows were already on the till but the download stamp was missing.
+- **To:** a catalogue download gets 55 seconds on the first path. Products are written first, then the shelf, then the rest. A later miss keeps what already landed. **Not saved** is used only when nothing is on the till, and the detail says which of the two true reasons it is: the shop has no products or stock to copy, or the shop did not finish sending the catalogue. Rows already on the till say **Part saved**, not **Not saved**.
+- **Why:** a save that starts must write the copy, or say why it could not. A missing stamp is not an empty till.
+- **Functions:** `readBudgets` in `electron/server.js`. `pull` in `public/js/sync.js`. `decideSaveStatus` in `lib/save-status.js`.
+- **Outcome:** **Not confirmed.** Do not put the catalogue download back on the 4.5 second screen budget. Do not show **Not saved** when products or stock are already on the till.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.
@@ -164,6 +174,7 @@ The chip, the bar, and the login line are not separate checks. They all read `SR
 | **You are offline.** | any failed `/api/` | `errorBlock` | the error is still `OFFLINE` after two probe misses |
 | List **Offline —** | that screen's `GET /api/...` | the view `load`, catching `err.isOffline` | `api.request` threw `OFFLINE`, which it must not do after one miss |
 | POS offline sale | `POST /api/sales` | `completeSale` then `queueOffline` | the shop did not take the sale. It must still be saved |
+| Chip **Not saved** | `POST /api/sync/pull` | `decideSaveStatus` | nothing is on the till. The detail must say the shop had nothing to copy, or the shop did not finish sending it. Rows on the till must not use this label |
 | Sync does not upload | `POST /api/sync/push` | `push` in `public/js/sync.js` | the flag is false. A false flag strands the sale |
 | **Signed in offline** | `POST /api/auth/login` | `signInOffline` | the shop login did not return a token and health also missed |
 | Saved-till `200` `offline: true` | `POST /api/auth/login`, `GET /api/auth/me` | `answerWhenShopDown` | the proxy got no shop answer. Not a shop answer |

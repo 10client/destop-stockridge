@@ -26,6 +26,13 @@ test('a running save, a refused sale, and an empty till are not finished', () =>
   assert.equal(decideSaveStatus({ pending: 2, online: false, lastPullAt: 'x', stockRows: 1 }).label, 'Saved here');
   assert.equal(decideSaveStatus({ pending: 0, lastPullAt: null, stockRows: 0, productRows: 0 }).label, 'Not saved');
   assert.equal(decideSaveStatus({ lastPullAt: 'x', stockRows: 1, truncated: ['products'] }).state, 'partial');
+  assert.equal(decideSaveStatus({ stockRows: 3, productRows: 0, lastPullAt: null }).label, 'Part saved');
+  const missed = decideSaveStatus({ pullError: 'The shop did not finish sending the catalogue. Leave the till open and connected so it can try again.' });
+  assert.equal(missed.label, 'Not saved');
+  assert.match(missed.detail, /did not finish sending the catalogue/);
+  const emptyShop = decideSaveStatus({ catalogueEmpty: true, lastPullAt: 'x' });
+  assert.equal(emptyShop.label, 'Not saved');
+  assert.match(emptyShop.detail, /no products or stock/);
 });
 
 test('the till script uses the same decision as the library', () => {
