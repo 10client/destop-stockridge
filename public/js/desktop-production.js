@@ -9,7 +9,7 @@
   if (!document.getElementById('sr-native-install')) {
     const style = document.createElement('style');
     style.id = 'sr-native-install';
-    style.textContent = '#install-btn,#nav-install,#login-install{display:none!important}';
+    style.textContent = '#install-btn,#nav-install,#login-install{display:none!important}#login-screen[hidden],#shell[hidden]{display:none!important}';
     (document.head || document.documentElement).appendChild(style);
   }
 
@@ -93,6 +93,23 @@
     if (/UPSTREAM_UNREACHABLE|shop server could not be reached|did not answer from this window/i.test(body)) return false;
     if (/"offline"\s*:\s*true/.test(body)) return false;
     return true;
+  }
+
+  function leaveLoginIfEntered() {
+    const root = document.getElementById('toasts');
+    const login = document.getElementById('login-screen');
+    const shell = document.getElementById('shell');
+    const user = global.SR && global.SR.state && global.SR.state.user;
+    if (!user || !login || !root) return;
+    const text = String(root.textContent || '');
+    if (!/Welcome,|Welcome\.|Signed in offline|Opened the stock saved/.test(text)) return;
+    if (login.hidden && login.style.display === 'none') return;
+    login.hidden = true;
+    login.style.setProperty('display', 'none', 'important');
+    if (shell) {
+      shell.hidden = false;
+      shell.style.removeProperty('display');
+    }
   }
 
   function correctOfflineChrome() {
@@ -543,7 +560,7 @@
   whenReady(() => {
     patchErrorBlock();
     installOnlineWrap();
-    setInterval(() => { installOnlineWrap(); correctOfflineChrome(); }, 1000);
+    setInterval(() => { installOnlineWrap(); correctOfflineChrome(); leaveLoginIfEntered(); }, 1000);
     if (global.SR && global.SR.api && global.SR.api.emit && !global.SR.api.emit.desktopWrapped) {
       const emit = global.SR.api.emit.bind(global.SR.api);
       function wrappedEmit(event, detail) {
@@ -582,10 +599,9 @@
           const name = state && state.user && state.user.username;
           if (name && token) await writeUser(name, { token, expiresAt: tokenExpiryMs(token) });
           await persistMirror(name);
-          if (opts && opts.force && SR.sync && SR.api.isOnline()) {
-            const cursor = await SR.store.metaGet('sync_cursor').catch(() => null);
-            await SR.sync.runOnce({ full: !cursor, silent: true }).catch(() => {});
-          }
+          // Do not sync inside load. A 401 from that sync was signing the till
+          // out before the login page had been left, so the welcome toast sat
+          // on the sign-in form. The shell starts the sync after it is open.
           return state;
         } catch (err) {
           if (err && err.isAuth) throw err;

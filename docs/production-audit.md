@@ -1,166 +1,180 @@
-# StockRidge production audit
+# StockRidge development memory
 
-Written 2026-10-21. This is the reference for what has already broken, what was changed, and what must not be undone while the till is brought to a production-ready state.
+Written 2026-10-21. This is the guide for the next change. Read the matching row before touching sign-in, the shop proxy, the online flag, or the screen cache. Do not repeat a change whose outcome is already known.
 
-The running Windows program is not confirmed on this file. Do not tell anyone the till is fixed until they open `dist\win-unpacked\StockRidge.exe` built from the commit that contains this file, after `node .\tools\stage-ui.js`. The live shop hosts were last confirmed on worker stamp `ea33075`. These till commits are not deployed. Do not deploy unless asked.
+Outcome words used below:
+
+- **Success** — the reported symptom stopped, and the till that was opened was the build that contained the change.
+- **Partial** — the code does the intended thing on that one path. A later symptom showed the till was still wrong, or the opened program was not confirmed.
+- **Not confirmed** — pushed, not proven on the Windows till they open.
+- **Failed** — the symptom was still there after the change.
+- **Worse** — the change removed one symptom and created another.
+
+The live shop hosts were last confirmed on worker stamp `ea33075`. None of the till commits below are deployed. Do not deploy unless asked. Do not tell anyone a row is Success until they open `dist\win-unpacked\StockRidge.exe` built from the commit that contains this file, after `node .\tools\stage-ui.js`.
+
+## How to use this file
+
+1. Find the symptom in the record. Read **From**, **To**, and **Do not**.
+2. If the outcome is Failed or Worse, do not patch the sentence. Find the route that still writes the wrong state.
+3. A shop answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence, an HTML block, or `"offline": true`.
+4. One account, one device still stands. The PIN is not stored. The window never calls `https://*.stockridge.workers.dev` itself.
+5. Build only `--win dir`. Open `dist\win-unpacked\StockRidge.exe`. Do not open `dist\StockRidge-0.1.0-win-x64.exe`.
 
 ## Standing rules
 
-- One account, one device. Do not keep the PWA and this till signed in together. A missing device id, or `SR-UNKNOWN`, is not a second device. A different real device still takes the account.
-- Do not store the PIN. Do not pass `--reset-pin`. A person the shop has never accepted on this till is not invented.
-- The window never calls `https://*.stockridge.workers.dev` itself. Every shop call is same-origin `/api/...`. Do not restore `sr-shop-direct` or a window `Promise.any` race against the Worker.
-- Do not put a Turso token, or Turso Sync, on the till. Do not split the shared database. The token is a secret and does not belong in git.
+- Do not store the PIN. Do not pass `--reset-pin`. Do not invent a username the shop has never accepted on this till.
+- Do not restore `sr-shop-direct` or a window `Promise.any` race against the Worker.
+- Do not put a Turso token, or Turso Sync, on the till. Do not split the shared database.
 - Do not edit applied migrations `0001`–`0022`. Do not recreate deleted `0023`. Do not wipe sample businesses. Do not add a fifth stored role or use `job_title`.
-- Do not deploy unless asked. Do not put the data copy on the every-deploy path.
-- Do not `git pull` in `C:\Users\Mohammed Hayatudeen\StockRidge`. Pull each repo in its own folder.
-- Do not build `dist\StockRidge-0.1.0-win-x64.exe`. That portable file stays locked. Build `--win dir` and open `dist\win-unpacked\StockRidge.exe`.
+- Do not deploy unless asked. Do not `git pull` in `C:\Users\Mohammed Hayatudeen\StockRidge`.
 - Do not spawn `electron-builder` through `shell: true`. Do not add `"postinstall": "electron-builder install-app-deps"`.
 - Do not set `webSecurity` to false. Do not call `rekey` while opening the till file. Do not delete `stockridge.db`, its `-wal` or `-shm`, `stockridge.key`, or a file set aside as unreadable.
 - Do not commit the staff sign-in sheet, a GitHub token, a Cloudflare token, or R2 keys.
+- A missing device id, or `SR-UNKNOWN`, is not a second device. A different real device still takes the account.
 
-## How the till decides it is online
+## Record
 
-This is the rule the last false Offline broke.
+### 1. Failed to fetch, the window called the Worker
 
-| Signal | What it means | What the till must do |
-| --- | --- | --- |
-| Shop status 1–499, and the body is not the proxy-miss sentence | The shop answered. 401 and 404 count. | Online. Clear the miss count. |
-| Proxy `502` `UPSTREAM_UNREACHABLE`, or window `502` `OFFLINE` | This computer did not get a shop answer. | A miss. Not proof by itself. |
-| `navigator.onLine === false`, or the browser `offline` event | The browser's network flag. Electron can report this while the proxy is answering. | Ask `/api/health`. Do not flip the chip. |
-| One timed-out screen | That screen missed. | Probe, then retry the screen once. Do not paint Offline. |
-| `/api/health` misses twice in a row | The shop is not answering. | Then, and only then, the chip may say Offline. |
-
-A sale the shop did not take is still saved on this till and counted in today's figures. It uploads when the line returns. The PIN is not stored to make that work.
-
-## Problems and fixes
-
-### 1. Failed to fetch, first time
-
-The window called the Worker directly. Cloudflare refuses a request with no browser signature (error 1010) and sends no CORS header. The browser reports that as **Failed to fetch**.
-
-Fix, in the desktop proxy: the page stays on this computer. The proxy adds a Chrome signature and forwards `x-device-id`. Do not race the window against the Worker.
+- **Symptom:** the screen said **Failed to fetch**.
+- **Routes:** the window `fetch` to `https://*.stockridge.workers.dev/api/...`.
+- **From:** the page called the Worker. Cloudflare error 1010, no CORS header. The browser reports that as a network failure.
+- **To:** every shop call is same-origin `/api/...`. `electron/server.js` `proxy` adds a Chrome user agent and forwards `x-device-id`.
+- **Why:** a window request has no browser signature Cloudflare accepts.
+- **Functions:** `localApiUrl` in `desktop-production.js` turns a Worker URL back into `/api/...`. `browserHeaders` and `nodeUpstream` set the signature.
+- **Outcome:** **Partial.** The direct call was the first cause. Later **Failed to fetch** came from a mislabelled gzip body, not from this race. Do not put the race back.
 
 ### 2. That failed. on the dashboard
 
-After the proxy change, a missing or unreadable shop answer was shown as a hard failure.
-
-Fix: a shop miss uses the figures already saved on the till. The sentence is not **That failed.** and not **Failed to fetch**.
+- **Symptom:** after the proxy change, the dashboard said **That failed.**
+- **Routes:** `GET /api/dashboard`.
+- **From:** a missing or unreadable body was thrown as a hard error. `ui.errorBlock` prefixed **That failed.**
+- **To:** a shop miss uses the figures already saved on the till. The sentence is not **That failed.** and not **Failed to fetch**.
+- **Why:** a dead read is not a bug in the figures the till already holds.
+- **Functions:** `errorBlock` in `public/js/ui.js`, patched by `patchErrorBlock` in `desktop-production.js`. Dashboard `refresh` in `public/js/views/dashboard.js`.
+- **Outcome:** **Partial.** The hard sentence went away. The screen then said Offline instead. Rewording was not the fix.
 
 ### 3. Signed out as another device
 
-The shop allows one device. This window was not always presenting the same device id it had just signed in with. A missing id was treated as a second device. Chromium's network path can drop `x-device-id` and still return an answer.
-
-Fix: one pinned device id on every shop call, including the login body. If Chromium answers "another device" and this till did send an id, ask again through Node, which keeps the header. A different real device id still takes over.
+- **Symptom:** **This account is signed in on another device, so this one has been signed out.**
+- **Routes:** `POST /api/auth/login`, then `GET /api/auth/me` and `POST /api/sync/push`. Shop code `SESSION_SUPERSEDED`.
+- **From:** the window did not always send the same device id it had just signed in with. A missing id was treated as a second device. Chromium's path can drop `x-device-id` and still return an answer.
+- **To:** one pinned id on every shop call, including the login body. If Chromium says another device and this till did send an id, ask again through Node. A different real device id still takes over.
+- **Why:** the shop allows one device. A missing id is not another device.
+- **Functions:** `pinDevice` and the fetch wrapper in `desktop-production.js`. `electronLostDevice` in `electron/server.js`. `handleAuthFailure` in `public/js/app.js`.
+- **Commits:** destop `3f777ad`, `1628bc4`. Stockridge `0f3c6cb`.
+- **Outcome:** **Partial.** The false second device on a missing id was the bug. One account, one device is still the product rule. Do not allow two live sessions to silence a real takeover.
 
 ### 4. Offline sign-in, then the other-device notice twice
 
-The shop login did not stick, so the till opened the saved stock and sent an old token. The shop rejected that token. Sync and the next read both showed the notice and signed the till out.
-
-Fix: if the shop is up, the sign-in in hand takes the account. If the shop is down, the saved till stays open and a rejected old token does not show that notice. The PIN is only in the sign-in call. Do not expose `saveAcceptedLogin` on IPC.
+- **Symptom:** **Signed in offline from the stock saved on this till**, then the other-device notice twice, then signed out.
+- **Routes:** `POST /api/auth/login`, then sync and the next read with the old token.
+- **From:** the shop login did not stick. The till opened the saved stock and sent an old token. The shop rejected it. Both callers showed the notice.
+- **To:** if the shop is up, the sign-in in hand takes the account. If the shop is down, the saved till stays open and a rejected old token does not show that notice.
+- **Why:** an old token is not a second sign-in. The PIN is only in the sign-in call.
+- **Functions:** `installOfflineLogin`, `sessionHeld`, `localSessionOnly` in `desktop-production.js`. `answerWhenShopDown` in `lib/offline-door.js`.
+- **Commit:** destop `2c2c3e8`.
+- **Outcome:** **Partial.** The double notice was the bug. Do not expose `saveAcceptedLogin` on IPC. Do not store the PIN to skip the shop.
 
 ### 5. Failed to fetch after a successful sign-in
 
-Chromium's shop path decodes gzip and can still report `content-encoding: gzip`. The proxy forwarded that label with the decoded body. The window could not read the answer. The old PWA screen cache could also hide a till fix, so a rebuild did not change the screen.
-
-Fix: the proxy describes the bytes it actually sends. Do not strip `content-encoding` from a body that still starts with gzip magic `1f 8b`. A file shipped in this program wins over the screen cache. A window call aimed at the Worker is turned back into `/api/...`.
+- **Symptom:** sign-in worked. The next screen said **That failed. Failed to fetch.**
+- **Routes:** any `/api/` whose body Chromium had already decoded.
+- **From:** Chromium decoded gzip and still reported `content-encoding: gzip`. The proxy forwarded that label with the decoded body. The window could not read it. The old PWA screen cache could also hide a till fix.
+- **To:** the proxy describes the bytes it actually sends. A shipped file wins over the screen cache. A window call aimed at the Worker is turned back into `/api/...`.
+- **Why:** a label that does not match the body is a network failure to the browser, even when the shop answered.
+- **Functions:** `decodeUpstream`, `responseForWindow`, `chooseStaticFile` in `electron/server.js`.
+- **Commit:** destop `2fbc028`. Stockridge `6aaffea`.
+- **Outcome:** **Partial.** Do not strip `content-encoding` from a body that still starts with gzip magic `1f 8b`. A rebuild that does not change the screen is the cache, not a reason to call the Worker from the window.
 
 ### 6. A different person could not sign in
 
-The till kept one check per username, but used it only for the last person saved, and only after the window itself read the shop login. The window gave up while the proxy was still asking. Any failed login fetch was turned into a fake miss. A person the shop had never accepted here had nothing to check, so they were refused.
-
-Fix, destop `8c63574` and stockridge `3c5f35d`: a login waits for a real shop answer. When the shop accepts a person, that person is saved before the window reads the answer. Other saved people stay. Either can sign in when the shop is down. Do not store the PIN. Do not invent a username the shop has never accepted on this till.
+- **Symptom:** a different username got **The shop did not answer from this window. Try the same username and PIN again.**
+- **Routes:** `POST /api/auth/login`.
+- **From:** the till kept one check per username but used it only for the last person, and only after the window itself read the login. The window gave up while the proxy was still asking. A failed login fetch was turned into a fake miss.
+- **To:** a login waits for a real shop answer. When the shop accepts a person, that person is saved before the window reads the answer. Any saved person can sign in when the shop is down.
+- **Why:** the shop had already accepted them. The till had refused to remember anyone but the last person.
+- **Functions:** `loginUpstream`, `acceptedLogin` in `electron/server.js`. `signInOffline`, `checkVerifier` in `desktop-production.js` and `lib/device-store.js`.
+- **Commits:** destop `8c63574`. Stockridge `3c5f35d`.
+- **Outcome:** **Not confirmed.** Do not store the PIN. Do not invent a username the shop has never accepted on this till. Do not keep only the last person.
 
 ### 7. Online login said the saved sign-in had expired
 
-The sentence was **Signed in offline. The saved sign-in has expired, so these sales stay on this till until you sign in while connected.** Node left the shop login compressed. The till could not read the token, treated a live answer as a miss, and opened the old saved sign-in.
-
-The build also waited on the locked portable exe and was cancelled three times. Packaging `dist\win-unpacked` is not proof they launched the new program.
-
-Fix, destop `44d413e` and stockridge `f00ba62`: decode a gzip shop login before judging it. Do not show that expired sentence when `isOnline()` is already true. The Windows target is `dir` only. `signAndEditExecutable` is false. `tools/archive.js` spawns `electron-builder` with `--win dir` and `shell: false`.
+- **Symptom:** **Signed in offline. The saved sign-in has expired, so these sales stay on this till until you sign in while connected.**
+- **Routes:** `POST /api/auth/login`.
+- **From:** Node left the shop login compressed. The till could not read the token, treated a live answer as a miss, and opened the old saved sign-in. The build also waited on the locked portable exe and was cancelled.
+- **To:** decode gzip before judging the login. Do not show that expired sentence when `isOnline()` is already true. Build unpacked `dir` only.
+- **Why:** a compressed token is still a token. A locked exe is not a new program.
+- **Functions:** `decodeUpstream`, `loginAnswer` in `electron/server.js`. `doLogin` in `public/js/app.js`. `tools/archive.js`.
+- **Commits:** destop `44d413e`. Stockridge `f00ba62`.
+- **Outcome:** **Not confirmed.** Packaging `dist\win-unpacked` is not proof they launched it. Do not write `dist\StockRidge-0.1.0-win-x64.exe` again.
 
 ### 8. Online login, then the offline dashboard
 
-The banner was **Offline — these figures are computed from this device's last sync, not from the office. Sales made here are counted in the queue below.** Sign-in had reached the shop. The dashboard read gave up while the proxy was still trying. Sales saved on the till were not in those figures.
-
-Fix, destop `08d5fda` and stockridge `0112e15`: a live token calls `noteReachable(true)`. Non-login proxy reads are capped so they answer before the window gives up. The dashboard probes and retries once before `fromMirror()`. Today's unsynced sales are counted from the till file. A shop-miss sale is queued. This did not stop the symptom. Do not treat those hashes as the complete online fix.
+- **Symptom:** **Offline — these figures are computed from this device's last sync, not from the office. Sales made here are counted in the queue below.**
+- **Routes:** `POST /api/auth/login` succeeded. `GET /api/dashboard` was still running when the window gave up.
+- **From:** the dashboard read gave up at 20 seconds. The proxy was still trying. The miss was painted as offline. Sales saved on the till were not in the figures.
+- **To:** a live token calls `noteReachable(true)`. Non-login proxy reads were capped. The dashboard retried once before `fromMirror()`. Today's unsynced sales are counted.
+- **Why:** a slow read is not proof the shop is down. A sale the shop did not take must still be on the till.
+- **Functions:** `noteReachable` in `public/js/api.js`. `readDashboard` and `paint` in `public/js/views/dashboard.js`. `lib/local-sales.js`. `queueOffline` in `public/js/views/pos.js`.
+- **Commits:** destop `08d5fda`. Stockridge `0112e15`.
+- **Outcome:** **Failed.** The till was still Offline while the person was online. Do not treat these hashes as the online fix. Do not fix it by rewording the banner.
 
 ### 9. Still Offline while the person is online
 
-`08d5fda` / `0112e15` left the structural cause in place:
+- **Symptom:** the chip and the dashboard still said Offline after a connected sign-in.
+- **Routes:** browser `offline` event. `navigator.onLine`. Any thrown `/api/` call. `GET /api/health/ping`. A saved-session `401` rewritten to `502` `OFFLINE`.
+- **From:** one miss, the browser flag, or a shop refusal each flipped the whole till. The probe used `/api/health/ping`, which the live shop answers as 404, and it only ran after the chip was already false. The health check skipped IPv4 and the antivirus certificate. Chromium was set to `direct`, so a computer that reaches the internet through a proxy looked offline inside this window. The first gateway 502 was kept, so the next path was never asked.
+- **To:** `shopAnswered` / `shopSpoke` is the only online signal. `/api/health` is the probe. The chip moves only after two probe misses. IPv4, then the inspected certificate, then Chromium on the system proxy, then the other host of the same books. A 401 stays a 401. A saved-till `offline: true` is not the shop.
+- **Why:** the person being online means the shop answered, not that the browser has a network icon.
+- **Functions:** `shouldMarkOffline` and `probe` in `public/js/reachability.js` and `public/js/api.js`. `askShopRead` and `readBudgets` in `electron/server.js`. `setProxy({ mode: 'system' })` and `siblingOrigin` in `electron/main.js` and `electron/paths.js`. `updateNetChrome` in `public/js/app.js` only reads the flag.
+- **Commits:** destop `f421672`, `377048e`, `4f5790e`. Stockridge `ca9b475`, `4d9d675`.
+- **Outcome:** **Not confirmed**, and the next row is **Worse** if they launched `4f5790e`. The shop hosts themselves answered `GET /api/health` with 200 from outside the till. That does not prove the opened exe contained this rule.
 
-- `api.js` started from `navigator.onLine` and set the chip offline on the browser `offline` event.
-- One fetch throw in `desktop-production.js` became `502` `OFFLINE`. `api.request` then set the chip offline.
-- A saved-session 401 was rewritten to that same miss, so a shop refusal looked like a dead shop.
-- `pos.js` treated `navigator.onLine === false` as offline.
-- The probe used `/api/health/ping`, which the live worker answers as 404, and it only ran while the chip was already false.
-- The dashboard could still paint the Offline banner from a miss even after the shop had answered.
+### 10. Welcome toast, login page did not change
 
-Fix in the commit that contains this file:
+- **Symptom:** after the previous fix, sign-in showed a popup confirming they were logged in. The login page did not change.
+- **Routes:** `POST /api/auth/login`, then `GET /api/auth/me`, then `POST /api/sync/push` or the dashboard read. The toast is `ui.ok` in `doLogin`. The page is `#login-screen`.
+- **From:** `doLogin` called `navigate('/dashboard')` and then `ui.ok('Welcome…')`. `render` hides the login page only when `SR.state.user` is set. Two things put the form back, or left it up:
+  1. `SR.state.load` ran a sync before returning. A 401 from that sync called `handleAuthFailure`, which calls `showLogin()`, while the welcome toast still fired.
+  2. `.login-screen { display: grid }` can beat the `hidden` attribute, so `showShell` set `hidden` and the form stayed on screen.
+- **To:** the shell is opened before the toast. A 401 in the 12 seconds after that sign-in does not pull the login page back. Sync starts after the shell is open, not inside `load`. `#login-screen[hidden]` is `display: none !important`, and `showShell` also sets that inline.
+- **Why:** a confirmed sign-in that does not leave the form is not a sign-in. One account, one device still applies after those 12 seconds.
+- **Functions:** `doLogin`, `showShell`, `showLogin`, `handleAuthFailure` in `public/js/app.js`. `wrappedLoad` in `desktop-production.js` no longer syncs inside load. `leaveLoginIfEntered` hides the form if the welcome toast is up and a user is set.
+- **Outcome:** **Not confirmed.** This row is the change that contains this file. Do not show **Welcome** if `SR.state.user` was not set. Do not lengthen the 12 seconds into a second live session.
 
-- `public/js/reachability.js` is the testable rule. `shopAnswered` is status 1–499 without the proxy-miss sentence. `shouldMarkOffline` is false until a probe has missed twice.
-- The chip starts online. A browser offline event asks the shop. It does not flip the chip.
-- A miss probes `/api/health`, then retries the screen once. The chip moves only after two probe misses. A 401 stays a 401 and marks the shop as having answered.
-- The dashboard does not show the Offline banner while `isOnline()` is true. It offers Try again instead.
-- The POS ignores `navigator.onLine`. A sale still queues when the call is a miss or retryable, including when the chip has not moved yet.
-- The proxy gives `/api/health` 12 seconds, then 10 seconds on the Node path. A normal screen read stays at 5 + 5 + 4 + 4 seconds so it does not outlive the window. Do not raise the global `api.js` 20 second timeout.
-- A saved till is no longer forced offline by `emit('net', { online: false })` when the live sign-in did not finish. The probe owns the chip.
+## What each screen reads
 
-Not confirmed until the new unpacked exe is the one they launch.
+The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.
 
-## What the till already does for an offline sale
-
-The browser outbox is `public/js/store.js`. The desktop till replaces it with `public/js/store-native.js`, which writes the sale through `native.outboxPut`. `public/js/save-status.js` shows **Saved here** when a sale is pending and the line is down. That file is display only. `lib/local-sales.js` counts today's unsynced sales so the dashboard does not drop them. `sync.js` pushes when the chip is online. A false Offline chip also stops that push, which is why the chip rule matters.
-
-## What is not production-ready
-
-- The Windows till the person is opening may still be an older unpacked build, or the locked portable exe from 20 Oct 2026 4:37:44 PM. Length of that old file was 77304820. Do not describe that file as a new build.
-- The live workers are not running `0112e15` or this commit. A PWA refresh will not pick up the till fix. Do not deploy to make the till match.
-- The exe is unsigned. Turning signing on without `CSC_LINK` fails the build. Leave `signAndEditExecutable` false.
-- Antivirus TLS inspection is a known way Node HTTPS fails while a browser works. It is not proven on this till. Do not set `webSecurity` to false to chase it. The proxy already has one insecure Node retry for a normal read, not for the health check.
-- Offline sign-in only works for a username the shop has already accepted on this till. That is intentional.
-- One account, one device will keep signing the other session out. That is the product rule, not a bug to remove.
-- The shop database is Turso, shared, not a copy on the till. A free-plan quota failure comes back as `BLOCKED`. Do not split the database to get past it.
+| Sentence | Route | Function | When it is honest |
+| --- | --- | --- | --- |
+| Chip **Offline** | none | `updateNetChrome` | `/api/health` has missed twice |
+| Dashboard **Offline —** | `GET /api/dashboard` | `refresh` then `paint` | `isOnline()` is false |
+| **You are offline.** | any failed `/api/` | `errorBlock` | the error is still `OFFLINE` after two probe misses |
+| List **Offline —** | that screen's `GET /api/...` | the view `load`, catching `err.isOffline` | `api.request` threw `OFFLINE`, which it must not do after one miss |
+| POS offline sale | `POST /api/sales` | `completeSale` then `queueOffline` | the shop did not take the sale. It must still be saved |
+| Sync does not upload | `POST /api/sync/push` | `push` in `public/js/sync.js` | the flag is false. A false flag strands the sale |
+| **Signed in offline** | `POST /api/auth/login` | `signInOffline` | the shop login did not return a token and health also missed |
+| Saved-till `200` `offline: true` | `POST /api/auth/login`, `GET /api/auth/me` | `answerWhenShopDown` | the proxy got no shop answer. Not a shop answer |
+| Proxy `502` `UPSTREAM_UNREACHABLE` | any `/api/` | `unreachable` | every path failed |
+| Window `502` `OFFLINE` | a `fetch` that threw | `shopMissResponse` | the window did not get a proxy response. Not a shop answer |
 
 ## How to continue
 
-1. Build the unpacked till from the commit that contains this file. Pull destop and stockridge in their own folders. Run `node .\tools\stage-ui.js` in the desktop repo so the new `reachability.js`, `api.js`, `dashboard.js`, and `pos.js` are the files the exe serves. Then `node .\node_modules\electron-builder\cli.js --win dir --config.win.signAndEditExecutable=false`. Open `dist\win-unpacked\StockRidge.exe`. Do not open the portable exe.
-2. Sign in on a connection. The chip must say Online. The dashboard must not say Offline. If it still does, the opened program is not this commit. Check that the served `api.js` contains "Do not start from navigator.onLine".
-3. Take a sale with the shop unreachable. It must save on this till, show **Saved here**, and be counted. It must upload after the chip returns to Online. Do not store the PIN to test this.
-4. Sign in as a second saved person on the same till while the shop is down. That must work. A username the shop has never accepted here must be refused.
-5. Do not deploy, do not reset a PIN, and do not pull from the parent folder, until those four checks pass on the unpacked exe.
+1. Pull destop and stockridge in their own folders. Confirm the desktop commit contains this file and the stockridge commit contains the login-page change in `public/js/app.js`.
+2. `node .\tools\stage-ui.js`, then `node .\node_modules\electron-builder\cli.js --win dir --config.win.signAndEditExecutable=false`.
+3. Open `dist\win-unpacked\StockRidge.exe`. Close the old window first.
+4. Sign in on a connection. The login form must disappear before the welcome toast. The chip must say Online. The dashboard must not say Offline.
+5. If the form remains, the opened program is not this commit. Do not add another toast. Check that the served `app.js` contains `loginGraceUntil`.
+6. Take a sale with the shop unreachable. It must save on this till. It must upload after the chip returns to Online.
+7. Do not deploy, do not reset a PIN, and do not pull the parent folder, until those checks pass.
 
-## Commits already pushed, and what they did not finish
+## Not production-ready
 
-| Repo | Commit | What it changed | Confirmed on the till? |
-| --- | --- | --- | --- |
-| destop | `8c63574` | Save each person the shop accepts | No |
-| stockridge | `3c5f35d` | Any saved person can sign in when the shop is down | No |
-| destop | `44d413e` | Decode a gzip login; build unpacked `dir` only | No |
-| stockridge | `f00ba62` | Do not say the saved sign-in expired when the shop is up | No |
-| destop | `08d5fda` | Live token marks online; count sales saved on the till | No. The Offline symptom remained |
-| stockridge | `0112e15` | Retry the dashboard once; export `noteReachable` | No. The Offline symptom remained |
-
-The screen rule that stopped a single miss flipping the chip is stockridge `ca9b475`, plus the later screen commit that contains `reachability.js` rejecting a saved-till `offline: true` body. The desktop rule is the commit that contains this file. The rebuild must contain both. Do not rebuild from `08d5fda`, `0112e15`, `377048e`, or `ca9b475` alone.
-
-## Every place that can say Offline
-
-The person being online means the shop answered. It does not mean the browser has a network icon. These are the only writers and the only sentences.
-
-| What you see | Route or event | Function | What it represents | Correct when |
-| --- | --- | --- | --- | --- |
-| Chip text **Offline** | none; it reads the flag | `updateNetChrome` in `public/js/app.js` | `SR.api.isOnline()` is false | The shop has missed `/api/health` twice |
-| Yellow bar under the chip | same flag | `updateNetChrome` | Work will be saved on this till | Same as the chip |
-| Login label **No connection** | same flag | `updateNetChrome` | The sign-in form thinks the shop is down | Same as the chip |
-| Dashboard **Offline —** | `GET /api/dashboard` failed | `refresh` then `paint` in `public/js/views/dashboard.js` | That screen used the saved figures | `isOnline()` is false. If the shop answered, this banner must not be there |
-| **You are offline.** | any failed `/api/` call | `errorBlock` in `public/js/ui.js`, patched by `patchErrorBlock` in `desktop-production.js` | The error was classified as a miss | The shop has missed twice. A shop answer must not keep this sentence |
-| Screen banners **Offline —** on stock, sales, customers, and the other lists | that screen's `GET /api/...` | each view's `load` / `render` catching `err.isOffline` | That one call was classified as a miss | Same. `api.request` must not throw `OFFLINE` after one miss |
-| POS **Offline. Sales completed here are stored on this device** | `GET` search and checkout | `public/js/views/pos.js` | `isOnline()` is false, or the sale call was a miss | A sale the shop did not take is still saved. The sentence must not show while the shop is answering |
-| Sync does not upload | `POST /api/sync` | `push` and `pull` in `public/js/sync.js` | They return immediately when `isOnline()` is false | The flag must be true after a shop answer, or a saved sale never leaves the till |
-| Sign-in sentence **Signed in offline** | `POST /api/auth/login` | `login` → `signInOffline` in `desktop-production.js` | The shop login did not return a token, and `/api/health` also missed | Only when both hosts miss. A saved person can still open the till. The PIN is not stored |
-| Saved-till `200` with `offline: true` | `POST /api/auth/login`, `GET /api/auth/me` | `answerWhenShopDown` in `lib/offline-door.js` | The proxy got no shop answer, so this computer answered from the saved till | Must not be treated as the shop. `sessionHeld` returns null on `body.offline` |
-| Proxy `502` `UPSTREAM_UNREACHABLE` | any `/api/` the shop did not answer | `unreachable` in `electron/server.js` | Every path failed: IPv4, default, insecure certificate, Chromium, and the other host | A real shop status, including 401 and 404, must be returned instead |
-| Window `502` `OFFLINE` | a window `fetch` that threw | `shopMissResponse` in `desktop-production.js` | The window did not get a response from the proxy on this computer | Not a shop answer. The chip still waits for two health misses |
-
-`navigator.onLine` and the browser `offline` event are not in that table. They are not the shop. `api.js` does not start from them, and `pos.js` does not read them.
-
-A status from 1 to 499 is the shop, except a body that is the proxy-miss sentence, an HTML block, or `"offline": true`. `shopAnswered` in `public/js/reachability.js` and `shopSpoke` in `electron/server.js` are that test. `shouldMarkOffline` requires two probe misses. `setOnline` is the only flag writer. `noteReachable(true)` is how a live sign-in sets it, because desktop login does not go through `api.request`.
+- The exe they open may still be an older unpacked build, or the locked portable file from 20 Oct 2026 4:37:44 PM. Length of that old file was 77304820.
+- The live workers are not running these till commits. A PWA refresh will not pick up a till fix.
+- The exe is unsigned. Leave `signAndEditExecutable` false until `CSC_LINK` exists.
+- Offline sign-in only works for a username the shop has already accepted on this till. That is intentional.
+- One account, one device will keep signing the other session out after the 12 second sign-in window. That is the product rule.
+- The shop database is Turso, shared, not a copy on the till. A quota failure comes back as `BLOCKED`. Do not split the database to get past it.

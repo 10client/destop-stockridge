@@ -32,6 +32,8 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 13. A gateway 502 is not the last word. Try IPv4, then the certificate an antivirus inserted, then Chromium on the computer's proxy, then the other host of the same books. Do not set the session proxy to `direct`. Do not count the saved-till door as the shop. Do not paint **You are offline** or **Offline —** on a screen while the shop has answered.
 
+14. A welcome toast is not a sign-in. `showShell` must hide `#login-screen` before `ui.ok`. Do not sync inside `state.load`. A 401 in the 12 seconds after that sign-in must not call `showLogin`. After those 12 seconds, one account, one device still stands. `.login-screen { display: grid }` must not beat `hidden`.
+
 ## What happened, in order
 
 ### Failed to fetch, first time
