@@ -163,6 +163,16 @@ The live shop hosts were last confirmed on worker stamp `ea33075`. None of the t
 - **Functions:** `readBudgets` in `electron/server.js`. `pull` in `public/js/sync.js`. `decideSaveStatus` in `lib/save-status.js`.
 - **Outcome:** **Not confirmed.** Do not put the catalogue download back on the 4.5 second screen budget. Do not show **Not saved** when products or stock are already on the till.
 
+### 13. Opening money, and a cleared browser that only kept the first branch
+
+- **Symptom:** the first money entered when a business or a branch opened was not in the books. After browser data was cleared, an offline sign-in only had the first branch and its data.
+- **Routes:** `POST /api/businesses`, `POST /api/branches`, `POST /api/sync/pull`, `GET /api/auth/me`, `GET /api/dashboard`.
+- **From:** the screen stored the float on the branch row and stopped. The seed path wrote the safe and Owner's Capital. The screen path did not. The dashboard then looked for entry types the schema does not allow, and subtracted every other row, so an opening that did exist was hidden. A mirror pull named the shop the shell was standing in. After a clear, that shop is the first branch, and the pull was cut to that branch's business. A co-owner created inside the first branch never received the other branch ids, because the scope query skipped the branch list when the user row had a pin.
+- **To:** opening money above zero is written once to the safe as `OPENING` and to the journal as debit Cash in Safe, credit Owner's Capital (`OPENING_BALANCE`, source `opening-{branchId}`). Zero writes nothing. A second save does not post it again. The dashboard safe balance is the sum of the amounts. A mirror pull stores every business and branch the person can reach. A cashier pinned to one branch still gets only that branch. Clearing the browser deletes the local copy. The next online sign-in is what stores the full mirror. An offline sign-in then restores that copy, not only the first branch.
+- **Why:** cash the owner put in on day one is capital, not income, and not a number that only the branch row remembers. A cleared browser must not quietly keep one shop and drop the rest.
+- **Functions:** `recordOpeningFloat` in `server/services/provisioningService.js`. `resolveScope` in `server/middleware/auth.js`. The pull filter in `server/routes/sync.js`. `pullRequest` in `public/js/sync.js`.
+- **Outcome:** **Not confirmed.** This is not deployed. Do not deploy unless asked. Do not post the opening float as income. Do not post it twice. Do not give a pinned cashier another branch's shelf to make the mirror look full.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.
