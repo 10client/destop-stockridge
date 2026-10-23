@@ -10,7 +10,7 @@ Outcome words used below:
 - **Failed** — the symptom was still there after the change.
 - **Worse** — the change removed one symptom and created another.
 
-On 2026-10-23 the PWA was deployed because they asked. Sample stamp `ridge-20261023-0812-fe1a821`. Office stamp `ridge-20261023-0813-fe1a821`. Both serve stockridge `fe1a821`. That deploy does not update the Windows exe. Do not deploy again unless asked. Do not tell anyone a row is Success until they open `dist\win-unpacked\StockRidge.exe` built from the commit that contains this file, after `node .\tools\stage-ui.js`.
+On 2026-10-23 the PWA was deployed because they asked. The later safe fix is sample stamp `ridge-20261023-0840-b3da1ea` and office stamp `ridge-20261023-0841-b3da1ea`, stockridge `b3da1ea`. That deploy does not update the Windows exe. Do not deploy again unless asked. Do not tell anyone a row is Success until they open `dist\win-unpacked\StockRidge.exe` built from the commit that contains this file, after `node .\tools\stage-ui.js`.
 
 ## How to use this file
 
@@ -191,7 +191,7 @@ On 2026-10-23 the PWA was deployed because they asked. Sample stamp `ridge-20261
 - **To:** the branch safe is painted beside the drawer for staff and for a manager, including when the open till belongs to somebody else. The till page shows the same figure on the drawer and on the Safe tab. A pinned cashier still sees only their shop. The safe ledger is copied with the catalogue so the offline screen is not blank.
 - **Why:** the safe is not the drawer. Hiding it unless this person opened the till made a funded safe look missing.
 - **Functions:** `paintSafe` in `public/js/views/dashboard.js`. `loadSafe` and `renderCurrent` in `public/js/views/till.js`. `GET /api/tills/current` in `server/routes/till.js`. `PULLABLE.branch_safe_ledger` in `server/routes/sync.js`.
-- **Outcome:** **Not confirmed.** Do not show another branch's safe to a pinned cashier. Do not treat the till float as the safe. Opening cash saved only on the branch row, before the safe ledger was written, is not backfilled by this change.
+- **Outcome:** **Not confirmed.** PWA deployed 2026-10-23. Sample stamp `ridge-20261023-0840-b3da1ea`. Office stamp `ridge-20261023-0841-b3da1ea`. Stockridge `b3da1ea`. The unpacked till was not rebuilt from here. Do not show another branch's safe to a pinned cashier. Do not treat the till float as the safe. Opening cash saved only on the branch row, before the safe ledger was written, is not backfilled by this change.
 
 ## What each screen reads
 
