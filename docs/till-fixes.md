@@ -36,6 +36,8 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 15. Opening money is recorded once, in the safe and in Owner's Capital. A zero float writes nothing. Do not post it as income, and do not post it again when the branch is saved later. A mirror download stores every branch the person can reach. A pinned cashier still gets only their branch. Clearing browser data deletes the local copy. The next online sign-in is what fills it.
 
+16. A general manager clock-in names the shop they picked. Do not post `/api/attendance/clock-in` or `/api/attendance/clock-out` without that `branch_id`. Do not guess a shop when several are reachable. All shops is not a clock-in. A pinned cashier is not offered another shop.
+
 12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence or the saved-till door (`offline: true`). Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
 
 13. A gateway 502 is not the last word. Try IPv4, then the certificate an antivirus inserted, then Chromium on the computer's proxy, then the other host of the same books. Do not set the session proxy to `direct`. Do not count the saved-till door as the shop. Do not paint **You are offline** or **Offline —** on a screen while the shop has answered.

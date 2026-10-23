@@ -173,6 +173,16 @@ The live shop hosts were last confirmed on worker stamp `ea33075`. None of the t
 - **Functions:** `recordOpeningFloat` in `server/services/provisioningService.js`. `resolveScope` in `server/middleware/auth.js`. The pull filter in `server/routes/sync.js`. `pullRequest` in `public/js/sync.js`.
 - **Outcome:** **Not confirmed.** This is not deployed. Do not deploy unless asked. Do not post the opening float as income. Do not post it twice. Do not give a pinned cashier another branch's shelf to make the mirror look full.
 
+### 14. General manager clock-in still says no branch is selected
+
+- **Symptom:** a general manager picks a shop, then clock-in keeps showing that a branch is still not selected.
+- **Routes:** `POST /api/attendance/clock-in`, `POST /api/attendance/clock-out`. The picker is `openBranchPicker` in `public/js/app.js`.
+- **From:** the shell stored the picked shop on `activeBranchId`. The clock-in and clock-out posts did not send `branch_id`. A general manager has no shop pin and reaches more than one shop, so `resolveBranch` answered `BRANCH_REQUIRED`: "Choose which branch this applies to." Selecting the shop again did not change the post. All shops is a group, not a shop, and must not be guessed.
+- **To:** clock-in and clock-out send the selected shop as `branch_id` in the body and on the query. If none is selected, the picker opens and All shops is refused for that action. After a shop is picked, the clock-in or clock-out continues with that shop. A pinned cashier is not offered another shop. The server still refuses a named shop outside scope.
+- **Why:** the hours belong to the shop they are standing in. The screen already knew which shop. The post did not say so.
+- **Functions:** `clockIn`, `clockOut`, `selectedShop` in `public/js/views/attendance.js`. `openBranchPicker` in `public/js/app.js`. `resolveBranch` in `server/lib/respond.js` already reads a named branch.
+- **Outcome:** **Not confirmed.** Coded. Deploy was asked for the PWA and the unpacked till. Do not mark this Success until a general manager clocks in on the build that contains it. Do not guess a shop. Do not pass `--reset-pin`. Do not open `dist\\StockRidge-0.1.0-win-x64.exe`.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.
