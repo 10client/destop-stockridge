@@ -183,6 +183,16 @@ On 2026-10-23 the PWA was deployed because they asked. Sample stamp `ridge-20261
 - **Functions:** `clockIn`, `clockOut`, `selectedShop` in `public/js/views/attendance.js`. `openBranchPicker` in `public/js/app.js`. `resolveBranch` in `server/lib/respond.js` already reads a named branch.
 - **Outcome:** **Not confirmed.** PWA deployed 2026-10-23. Sample stamp `ridge-20261023-0812-fe1a821`. Office stamp `ridge-20261023-0813-fe1a821`. Stockridge `fe1a821`. The unpacked till was not rebuilt from here, so Electron does not have this fix until that program is built and opened. Do not mark this Success until a general manager clocks in on that build. Do not guess a shop. Do not pass `--reset-pin`. Do not open `dist\\StockRidge-0.1.0-win-x64.exe`.
 
+### 15. Staff see the till, and not the safe
+
+- **Symptom:** a general manager opened a till and put money in the safe. Staff signed in, saw the till, and the safe did not show.
+- **Routes:** `GET /api/dashboard`, `GET /api/tills/current`, `GET /api/safe`.
+- **From:** the safe balance was already on the dashboard payload. The screen painted it only when the signed-in person had their own till open. The general manager's till is not the cashier's till, so staff saw that drawer and the safe figure was dropped. The till page also left `safeBalance` off the drawer card. An empty current-till answer omitted the safe entirely. The offline copy did not include `branch_safe_ledger`, so a dropped line showed the drawer and a blank safe.
+- **To:** the branch safe is painted beside the drawer for staff and for a manager, including when the open till belongs to somebody else. The till page shows the same figure on the drawer and on the Safe tab. A pinned cashier still sees only their shop. The safe ledger is copied with the catalogue so the offline screen is not blank.
+- **Why:** the safe is not the drawer. Hiding it unless this person opened the till made a funded safe look missing.
+- **Functions:** `paintSafe` in `public/js/views/dashboard.js`. `loadSafe` and `renderCurrent` in `public/js/views/till.js`. `GET /api/tills/current` in `server/routes/till.js`. `PULLABLE.branch_safe_ledger` in `server/routes/sync.js`.
+- **Outcome:** **Not confirmed.** Do not show another branch's safe to a pinned cashier. Do not treat the till float as the safe. Opening cash saved only on the branch row, before the safe ledger was written, is not backfilled by this change.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.

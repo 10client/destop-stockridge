@@ -38,6 +38,8 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 16. A general manager clock-in names the shop they picked. Do not post `/api/attendance/clock-in` or `/api/attendance/clock-out` without that `branch_id`. Do not guess a shop when several are reachable. All shops is not a clock-in. A pinned cashier is not offered another shop.
 
+17. The safe is shown beside the till, including when the open till belongs to somebody else. Do not paint the safe only for the person who opened the drawer. A pinned cashier still sees only their shop's safe. Do not treat the till float as the safe balance.
+
 12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence or the saved-till door (`offline: true`). Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
 
 13. A gateway 502 is not the last word. Try IPv4, then the certificate an antivirus inserted, then Chromium on the computer's proxy, then the other host of the same books. Do not set the session proxy to `direct`. Do not count the saved-till door as the shop. Do not paint **You are offline** or **Offline —** on a screen while the shop has answered.
