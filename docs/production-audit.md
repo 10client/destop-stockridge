@@ -10,7 +10,7 @@ Outcome words used below:
 - **Failed** — the symptom was still there after the change.
 - **Worse** — the change removed one symptom and created another.
 
-The live shop hosts were last confirmed on worker stamp `ea33075`. None of the till commits below are deployed. Do not deploy unless asked. Do not tell anyone a row is Success until they open `dist\win-unpacked\StockRidge.exe` built from the commit that contains this file, after `node .\tools\stage-ui.js`.
+On 2026-10-23 the PWA was deployed because they asked. Sample stamp `ridge-20261023-0812-fe1a821`. Office stamp `ridge-20261023-0813-fe1a821`. Both serve stockridge `fe1a821`. That deploy does not update the Windows exe. Do not deploy again unless asked. Do not tell anyone a row is Success until they open `dist\win-unpacked\StockRidge.exe` built from the commit that contains this file, after `node .\tools\stage-ui.js`.
 
 ## How to use this file
 
@@ -171,7 +171,7 @@ The live shop hosts were last confirmed on worker stamp `ea33075`. None of the t
 - **To:** opening money above zero is written once to the safe as `OPENING` and to the journal as debit Cash in Safe, credit Owner's Capital (`OPENING_BALANCE`, source `opening-{branchId}`). Zero writes nothing. A second save does not post it again. The dashboard safe balance is the sum of the amounts. A mirror pull stores every business and branch the person can reach. A cashier pinned to one branch still gets only that branch. Clearing the browser deletes the local copy. The next online sign-in is what stores the full mirror. An offline sign-in then restores that copy, not only the first branch.
 - **Why:** cash the owner put in on day one is capital, not income, and not a number that only the branch row remembers. A cleared browser must not quietly keep one shop and drop the rest.
 - **Functions:** `recordOpeningFloat` in `server/services/provisioningService.js`. `resolveScope` in `server/middleware/auth.js`. The pull filter in `server/routes/sync.js`. `pullRequest` in `public/js/sync.js`.
-- **Outcome:** **Not confirmed.** This is not deployed. Do not deploy unless asked. Do not post the opening float as income. Do not post it twice. Do not give a pinned cashier another branch's shelf to make the mirror look full.
+- **Outcome:** **Not confirmed.** The PWA deploy of 2026-10-23 includes this code. The unpacked till has not been rebuilt, so the shop computer does not have it yet. Do not post the opening float as income. Do not post it twice. Do not give a pinned cashier another branch's shelf to make the mirror look full.
 
 ### 14. General manager clock-in still says no branch is selected
 
@@ -181,7 +181,7 @@ The live shop hosts were last confirmed on worker stamp `ea33075`. None of the t
 - **To:** clock-in and clock-out send the selected shop as `branch_id` in the body and on the query. If none is selected, the picker opens and All shops is refused for that action. After a shop is picked, the clock-in or clock-out continues with that shop. A pinned cashier is not offered another shop. The server still refuses a named shop outside scope.
 - **Why:** the hours belong to the shop they are standing in. The screen already knew which shop. The post did not say so.
 - **Functions:** `clockIn`, `clockOut`, `selectedShop` in `public/js/views/attendance.js`. `openBranchPicker` in `public/js/app.js`. `resolveBranch` in `server/lib/respond.js` already reads a named branch.
-- **Outcome:** **Not confirmed.** Coded. Deploy was asked for the PWA and the unpacked till. Do not mark this Success until a general manager clocks in on the build that contains it. Do not guess a shop. Do not pass `--reset-pin`. Do not open `dist\\StockRidge-0.1.0-win-x64.exe`.
+- **Outcome:** **Not confirmed.** PWA deployed 2026-10-23. Sample stamp `ridge-20261023-0812-fe1a821`. Office stamp `ridge-20261023-0813-fe1a821`. Stockridge `fe1a821`. The unpacked till was not rebuilt from here, so Electron does not have this fix until that program is built and opened. Do not mark this Success until a general manager clocks in on that build. Do not guess a shop. Do not pass `--reset-pin`. Do not open `dist\\StockRidge-0.1.0-win-x64.exe`.
 
 ## What each screen reads
 
@@ -209,12 +209,12 @@ The chip, the bar, and the login line are not separate checks. They all read `SR
 4. Sign in on a connection. The login form must disappear before the welcome toast. The chip must say Online. The dashboard must not say Offline.
 5. If the form remains, the opened program is not this commit. Do not add another toast. Check that the served `app.js` contains `loginGraceUntil`.
 6. Take a sale with the shop unreachable. It must save on this till and leave **Saving…** when the write finishes. Opening another page must not return the login form. It must upload after the chip returns to Online.
-7. Do not deploy, do not reset a PIN, and do not pull the parent folder, until those checks pass.
+7. Do not deploy again unless asked. Do not reset a PIN. Do not pull the parent folder. The PWA deploy of 2026-10-23 does not replace the unpacked exe.
 
 ## Not production-ready
 
 - The exe they open may still be an older unpacked build, or the locked portable file from 20 Oct 2026 4:37:44 PM. Length of that old file was 77304820.
-- The live workers are not running these till commits. A PWA refresh will not pick up a till fix.
+- The PWA hosts are on stockridge `fe1a821`. A refresh of the browser picks that up. The Windows till does not. A file shipped in the exe wins over that deploy. Rebuild `dist\\win-unpacked\\StockRidge.exe` from this commit, then open that file.
 - The exe is unsigned. Leave `signAndEditExecutable` false until `CSC_LINK` exists.
 - Offline sign-in only works for a username the shop has already accepted on this till. That is intentional.
 - One account, one device will keep signing the other session out after the 12 second sign-in window. That is the product rule.
