@@ -10,8 +10,7 @@ Outcome words used below:
 - **Failed** — the symptom was still there after the change.
 - **Worse** — the change removed one symptom and created another.
 
-On 2026-10-23 the PWA was deployed because they asked. The later safe fix is sample stamp `ridge-20261023-0840-b3da1ea` and office stamp `ridge-20261023-0841-b3da1ea`, stockridge `b3da1ea`. That deploy does not update the Windows exe. Do not deploy again unless asked. Do not tell anyone a row is Success until they open `dist\win-unpacked\StockRidge.exe` built from the commit that contains this file, after `node .\tools\stage-ui.js`.
-
+On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Windows till was built. Sample stamp `ridge-20261027-1243-2ab07aa`. Office stamp `ridge-20261027-1244-2ab07aa`. Stockridge `2ab07aa`. Destop `797743a`. The PIN was not changed. Do not tell anyone a row is Success until they open the new unpacked `StockRidge.exe` and the symptom is gone. Do not open the portable exe.
 ## How to use this file
 
 1. Find the symptom in the record. Read **From**, **To**, and **Do not**.
@@ -223,7 +222,7 @@ On 2026-10-23 the PWA was deployed because they asked. The later safe fix is sam
 - **Why:** a lost answer is not proof the shop refused the order. Asking the other host turns a slow raise into a signature error, and asking again inserts another order.
 - **Functions:** `isOneShotWrite` and `readBudgets` in `electron/server.js`. `idempotent` in `server/lib/idempotency.js`. `openOrderJustRaised` in `server/routes/finance.js`. The raise handler in `public/js/views/purchase-orders.js`.
 - **What breaks if this is altered:** sending a purchase-order post down a second path, or to the other host, creates another order and can show `Invalid token signature` again. Cutting the one write back to 4.5 seconds aborts it after the shop has kept it. Reusing an idempotency key for a different body is refused. A second identical raise inside two minutes returns the open order; it does not insert another. Do not treat that window as a reason to block a cancelled order from being raised again.
-- **Outcome:** **Not confirmed.** Not deployed. The unpacked till was not rebuilt from here, so the till they open still has the old proxy until `node .\\tools\\stage-ui.js` and `--win dir`. Do not mark this Success until a raise on that build shows the order number and does not show `Invalid token signature`. Do not pass `--reset-pin`. Do not deploy unless asked.
+- **Outcome:** **Not confirmed.** PWA deployed 2026-10-27 because they asked. Sample stamp `ridge-20261027-1243-2ab07aa`. Office stamp `ridge-20261027-1244-2ab07aa`. Stockridge `2ab07aa`, stamp commit `b9f25bd`. Destop `797743a`. PIN unchanged. Readiness ready, 7 businesses. The unpacked Windows till was built here as `dist\\win-unpacked\\StockRidge.exe` (Windows x64, the SQLite module is a Windows DLL, not a Linux file). It contains `isOneShotWrite`. Do not mark this Success until a raise on that exe shows the order number and does not show `Invalid token signature`. Do not open `dist\\StockRidge-0.1.0-win-x64.exe`. Do not pass `--reset-pin`.
 - **Data, 2026-10-27:** ElecRidge only. `PO-ELECRI-7BAJE` was received and paid, and none of those units had been sold. That receipt was reversed: 22 units off the shelf, 12 serials released, bank and inventory journals reversed (`JE-REV-MVQM4S1J`), supplier balance back to zero. `PO-ELECRI-L7DDP`, the duplicate still pending, was cancelled. Withholding rows for those practice orders had not been remitted and were removed. The product names were kept. Businesses and owners were not wiped. Do not run that reversal again.
 
 ## What each screen reads
@@ -257,7 +256,7 @@ The chip, the bar, and the login line are not separate checks. They all read `SR
 ## Not production-ready
 
 - The exe they open may still be an older unpacked build, or the locked portable file from 20 Oct 2026 4:37:44 PM. Length of that old file was 77304820.
-- The PWA hosts are on the safe-fix stamps: sample `ridge-20261023-0840-b3da1ea`, office `ridge-20261023-0841-b3da1ea`, stockridge `b3da1ea`. A refresh of the browser picks that up. The Windows till does not. A file shipped in the exe wins over that deploy. The purchase-order write fix is not on either PWA, and it is not in the unpacked exe, until those are built. Do not deploy unless asked. Rebuild `dist\\win-unpacked\\StockRidge.exe` from this commit, then open that file.
+- The PWA hosts are on the purchase-order stamps: sample `ridge-20261027-1243-2ab07aa`, office `ridge-20261027-1244-2ab07aa`, stockridge `2ab07aa`. A refresh of the browser picks that up. The Windows till does not, until they close the old window and open the unpacked `StockRidge.exe` built on 2026-10-27. A file shipped in that exe wins over the PWA. Do not open the locked portable exe. Do not pass `--reset-pin`.
 - The exe is unsigned. Leave `signAndEditExecutable` false until `CSC_LINK` exists.
 - Offline sign-in only works for a username the shop has already accepted on this till. That is intentional.
 - One account, one device will keep signing the other session out after the 12 second sign-in window. That is the product rule.
