@@ -310,6 +310,46 @@ test('a gateway 502 is not kept when the next path is the shop', async () => {
   }
 });
 
+test('a write is not sent to the other host when this host does not answer', async () => {
+  const dead = http.createServer();
+  await new Promise((resolve) => dead.listen(0, '127.0.0.1', resolve));
+  const deadPort = dead.address().port;
+  await new Promise((resolve) => dead.close(resolve));
+  let siblingPosts = 0;
+  const live = http.createServer((req, res) => {
+    if (req.method === 'POST') siblingPosts += 1;
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Invalid token signature', code: 'TOKEN_BAD_SIGNATURE' }));
+  });
+  await new Promise((resolve) => live.listen(0, '127.0.0.1', resolve));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-write-once-'));
+  fs.mkdirSync(path.join(root, 'public'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'public', 'index.html'), '<head></head><body></body>');
+  const desktop = await startServer({
+    root,
+    origin: `http://127.0.0.1:${deadPort}`,
+    fallbackOrigin: `http://127.0.0.1:${live.address().port}`,
+    host: '127.0.0.1',
+    port: 0,
+  });
+  try {
+    const api = await fetch(desktop.url + 'api/purchase-orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
+      body: JSON.stringify({ supplier_id: 's1', items: [{ product_id: 'p1', quantity: 1 }] }),
+    });
+    const body = await api.json();
+    assert.equal(api.status, 502);
+    assert.equal(body.code, 'UPSTREAM_UNREACHABLE');
+    assert.equal(siblingPosts, 0);
+    assert.equal(JSON.stringify(body).includes('Invalid token signature'), false);
+  } finally {
+    await desktop.close();
+    await new Promise((resolve) => live.close(resolve));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('the other host answers when the primary port is closed', async () => {
   const dead = http.createServer();
   await new Promise((resolve) => dead.listen(0, '127.0.0.1', resolve));

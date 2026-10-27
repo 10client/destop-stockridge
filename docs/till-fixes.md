@@ -38,7 +38,9 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 16. A general manager clock-in names the shop they picked. Do not post `/api/attendance/clock-in` or `/api/attendance/clock-out` without that `branch_id`. Do not guess a shop when several are reachable. All shops is not a clock-in. A pinned cashier is not offered another shop.
 
-17. The safe is shown beside the till, including when the open till belongs to somebody else. Do not paint the safe only for the person who opened the drawer. A pinned cashier still sees only their shop's safe. Do not treat the till float as the safe balance.
+17. The safe is shown beside the till, including when the open till belongs to somebody else. Do not paint the safe only for the person who opened the drawer. A pinned cashier still sees only their shop's safe. Do not treat the till float as the safe balance. The files are `paintSafe` and `mirroredSafe` in `dashboard.js`, the drawer and Safe tab in `till.js`, `safeBalance` on `GET /api/tills/current`, and `branch_safe_ledger` in both pull lists. Dropping any of those hides the safe again, or shows another shop's cash.
+
+18. A purchase order, and any other write that is not login or a catalogue pull or push, is sent once. Do not try a second path, and do not ask the other host. The other host signs with its own secret and answers `Invalid token signature` after this host has already kept the order. A lost answer is not proof the order was refused. The screen keeps one idempotency key for the same raise.
 
 12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence or the saved-till door (`offline: true`). Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
 

@@ -302,13 +302,17 @@ function nodeUpstream(target, transport, url, method, headers, body, { family = 
         resolve({ status: pres.statusCode || 502, headers: out, body: Buffer.concat(chunks) });
       });
     });
+    let sent = false;
     const fail = (err) => {
       upstream.destroy();
-      reject(err instanceof Error ? err : new Error('The shop server could not be reached.'));
+      const error = err instanceof Error ? err : new Error('The shop server could not be reached.');
+      if (sent) error.sent = true;
+      reject(error);
     };
     upstream.on('timeout', () => fail(new Error('The Worker did not answer in time.')));
     upstream.on('error', fail);
     if (body && body.length) upstream.write(body);
+    sent = true;
     upstream.end();
   });
 }
@@ -501,16 +505,44 @@ async function loginUpstream(target, transport, url, method, pageHeaders, nodeHe
 // does not. Cutting /api/sync/pull at 4.5 seconds was how Saving finished as
 // Not saved: the shop was still building the copy, the proxy destroyed it, and
 // nothing was written on this till.
-function readBudgets(urlPath) {
+//
+// A write is not a read. The old screen budget tried IPv4, then another Node
+// path, then the inspected certificate, each for a few seconds, and then asked
+// the other host. A purchase order has no second chance: each attempt that
+// reached the shop inserted a row, and the other host then answered
+// "Invalid token signature" because it signs with its own secret. The window
+// showed that refusal. The orders were already raised.
+function isOneShotWrite(method, urlPath) {
+  const verb = String(method || 'GET').toUpperCase();
+  if (verb === 'GET' || verb === 'HEAD' || verb === 'OPTIONS') return false;
+  const path = String(urlPath && urlPath.pathname ? urlPath.pathname : urlPath || '');
+  // Pull and push already carry idempotency keys, and they need the long
+  // budget. Login is one request in its own branch. Every other write is sent
+  // once.
+  if (path.indexOf('/api/sync/pull') !== -1 || path.indexOf('/api/sync/push') !== -1) return false;
+  if (path === '/api/auth/login') return false;
+  return true;
+}
+
+function requestMayHaveLanded(err) {
+  const message = String(err && err.message || '');
+  if (/did not answer in time/i.test(message)) return true;
+  return Boolean(err && err.sent);
+}
+
+function readBudgets(urlPath, method) {
   const path = String(urlPath && urlPath.pathname ? urlPath.pathname : urlPath || '');
   if (path.indexOf('/api/sync/pull') !== -1 || path.indexOf('/api/sync/push') !== -1) {
-    return { v4: 55000, node: 0, insecure: 55000, net: 0, sibling: 8000, catalogue: true };
+    return { v4: 55000, node: 0, insecure: 55000, net: 0, sibling: 8000, catalogue: true, once: false };
   }
-  return { v4: 4500, node: 3500, insecure: 3500, net: 3500, sibling: 4000, catalogue: false };
+  if (isOneShotWrite(method, path)) {
+    return { v4: 18000, node: 0, insecure: 0, net: 0, sibling: 0, catalogue: false, once: true };
+  }
+  return { v4: 4500, node: 3500, insecure: 3500, net: 3500, sibling: 4000, catalogue: false, once: false };
 }
 
 async function askShopRead(hostTarget, hostTransport, url, method, pageHeaders, nodeHeaders, body, deviceId) {
-  const budget = readBudgets(url);
+  const budget = readBudgets(url, method);
   const httpsHost = hostTarget.protocol === 'https:';
   const plans = [
     { via: 'node', family: 4, timeout: budget.v4 },
@@ -537,8 +569,11 @@ async function askShopRead(hostTarget, hostTransport, url, method, pageHeaders, 
       }
       return plain;
     } catch (err) {
-      // A catalogue download that already waited out its budget must not start
-      // another minute. A fast certificate miss still gets the next path.
+      // A write that already left this computer must not be sent again. The
+      // shop may have kept it. A catalogue download that already waited out
+      // its budget must not start another minute. A fast certificate miss on
+      // a read still gets the next path.
+      if (budget.once && requestMayHaveLanded(err)) break;
       if (budget.catalogue && Date.now() - started > 8000) break;
     }
   }
@@ -572,13 +607,16 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
         try { onAcceptedLogin(accepted); } catch (err) { /* the shop already accepted this person */ }
       }
     } else {
-      // A gateway 502 is not the shop. Try IPv4, then the certificate the
-      // antivirus inserted, then Chromium, then the other host of the same books.
-      // Stop at the first answer the shop itself sent.
+      // A gateway 502 is not the shop. A read may try IPv4, then the
+      // certificate the antivirus inserted, then Chromium, then the other
+      // host of the same books. A write is sent once. The other host signs
+      // with its own secret, so its "Invalid token signature" must not hide
+      // an order this host already kept.
+      const once = isOneShotWrite(method, url);
       upstream = await askShopRead(target, transport, url, method, pageHeaders, nodeHeaders, body, deviceId);
       let blip = upstream && sessionBlip(upstream) ? upstream : null;
       if (blip) upstream = null;
-      if (!upstream && other) {
+      if (!upstream && other && !once) {
         const otherTransport = other.protocol === 'http:' ? http : https;
         const otherHeaders = forwardHeaders(req.headers, { host: other.host });
         otherHeaders['user-agent'] = CHROME_UA;
@@ -611,4 +649,4 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, shopSpoke, sessionBlip };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip };
