@@ -255,6 +255,23 @@
     return lines.filter((line) => line && line.product_id && Number(line.quantity) > 0);
   }
 
+  async function hubQty(line) {
+    const qty = Number(line && line.quantity);
+    if (!(qty > 0)) return 0;
+    const code = String((line && (line.unit_code || line.unitCode)) || '').trim().toUpperCase();
+    const named = Number(line && (line.unit_factor || line.unitFactor));
+    const store = global.SR && global.SR.store;
+    if (store && store.all && line.product_id) {
+      const units = await store.all('product_units', {
+        where: (row) => !Number(row.is_deleted) && String(row.product_id) === String(line.product_id),
+      }).catch(() => []);
+      const hit = (units || []).find((row) => String(row.code || '').toUpperCase() === code)
+        || (units || []).find((row) => String(row.name || '').toUpperCase() === code);
+      if (hit && Number(hit.quantity_in_base) > 0) return qty * Number(hit.quantity_in_base);
+    }
+    return qty * (named > 0 ? named : 1);
+  }
+
   function usernameOf(value) {
     return String(value || '').trim().toLowerCase();
   }
@@ -649,17 +666,18 @@
       const enqueue = SR.store.enqueue.bind(SR.store);
       async function wrappedEnqueue(op) {
         const record = await enqueue(op);
-        if (record && String(record.type).toUpperCase() === 'SALE') {
-          await native.store.reserveFromSale(record).catch(() => {});
-          if (native.hub) {
-            for (const line of saleLines(record)) {
-              native.hub.reserve({
-                client_id: `${record.client_id}:${line.product_id}`,
-                product_id: String(line.product_id),
-                qty: Number(line.quantity),
-                till_id: record.device_id || null,
-              }).catch(() => {});
-            }
+        if (record && String(record.type).toUpperCase() === 'SALE' && native.hub) {
+          // Do not reserveFromSale on this till. The shelf statement is the
+          // count. A hold on top of that cut hides the product. Other tills
+          // still hear the sale, in base units when the ladder is here.
+          for (const line of saleLines(record)) {
+            const qty = await hubQty(line);
+            native.hub.reserve({
+              client_id: `${record.client_id}:${line.product_id}`,
+              product_id: String(line.product_id),
+              qty,
+              till_id: record.device_id || null,
+            }).catch(() => {});
           }
         }
         return record;
@@ -680,6 +698,7 @@
         for (const [table, payload] of Object.entries(body.tables)) {
           if (!payload || !Array.isArray(payload.rows) || !payload.rows.length) continue;
           await SR.store.putMany(table, payload.rows);
+          if (table === 'stock_batches' && native.store.replayShelf) await native.store.replayShelf().catch(() => {});
           rows += payload.rows.length;
         }
         if (body.reservations) await SR.store.metaSet('hub_reservations', body.reservations);

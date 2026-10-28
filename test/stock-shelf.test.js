@@ -19,6 +19,20 @@ function batch(id, extra) {
   }, extra);
 }
 
+test('one shop on the till still shows when the session shop id does not match', () => {
+  const rows = [
+    batch('a', { branch_id: 'shelf-shop', quantity: 4 }),
+    batch('b', { branch_id: 'shelf-shop', quantity: 2 }),
+  ];
+  const shown = shelf.batchesForBranch(rows, 'session-shop');
+  assert.equal(shown.length, 2);
+  const hidden = shelf.batchesForBranch([
+    batch('a', { branch_id: 'shop-a' }),
+    batch('b', { branch_id: 'shop-b' }),
+  ], 'session-shop');
+  assert.equal(hidden.length, 0);
+});
+
 test('a sale takes the soonest expiry, not a newer receipt that arrived first', () => {
   const older = batch('old', { received_at: '2026-09-01 10:00:00', expiry_date: '2027-01-01', quantity: 10 });
   const sooner = batch('soon', { received_at: '2026-10-20 10:00:00', expiry_date: '2026-11-01', quantity: 10 });

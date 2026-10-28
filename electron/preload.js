@@ -39,6 +39,7 @@ const METHODS = [
   'logPut', 'logAll', 'logClear',
   'exportAll', 'importAll', 'info',
   'reserve', 'reserveFromSale', 'reservedByProduct', 'dropReservation',
+  'applySale', 'applyAdjust', 'replayShelf', 'offeredHolds',
   'rememberVerifier', 'checkVerifier', 'hasVerifier', 'listVerifiers',
 ];
 

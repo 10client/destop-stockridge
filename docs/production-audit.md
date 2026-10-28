@@ -269,16 +269,16 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** putting the "shop is up" sentence back on a failed probe brings the popup back. Trusting the browser offline flag inside Electron marks a working proxy offline. Opening the saved till after a probe has answered brings back the expired-session sign-in.
 - **Outcome:** **Not confirmed.** PWA deployed 2026-10-28. Sample and office stamp `ridge-20261028-0933-a211d23`. Stockridge `a211d23`. PIN unchanged. Not marked Success until they sign in on the PWA with no connection and the saved page opens, without that sentence. The unpacked till needs a build from this commit. Do not open the portable exe. Do not pass `--reset-pin`. Do not store the PIN.
 
-### 21. Offline remaining stock does not drop the way the sale will
+### 21. Offline remaining stock shows, then the products disappear
 
-- **Symptom:** an offline sale saves, and once it reaches the shop the figures are right. While it is still on the till, the remaining stock count is wrong, especially after sales.
-- **Routes:** none for the count. The sale is still `POST /api/sales` when the line returns. The count is the local `stock_batches` mirror.
-- **From:** the till reduced `quantity` on the oldest receipt, including units a bill had already reserved, and it used a factor of 1 when the ladder said the unit was a carton. The stock screen then skipped a batch whose free count had gone below zero, so the goods left on the next batch still showed. A catalogue download replaced the shelf with the shop's count and did not put the unsynced sale back on.
-- **To:** the till takes free stock only, soonest expiry first, in base units from the unit ladder. A hire does not leave the shelf. After a download, unsynced sales and adjustments are applied again. Stock and Products keep that count until the sale is on the shop.
-- **Why:** the cashier has to see what is left before the line returns. The shop already records the sale correctly. The till must not show a different shelf.
-- **Functions:** `consumeLines` in `public/js/stock-shelf.js`. `applyLocalSale` in `public/js/views/pos.js`. `replayUnsyncedShelf` in `public/js/sync.js`.
-- **What breaks if this is altered:** deducting reserved units, or ignoring the unit ladder, brings the wrong remaining count back. A stock download that does not replay the outbox puts the old count back while the sale is still on the till.
-- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they sell offline and the remaining count on this till drops by that sale, in the same units the shop will record. The unpacked till needs a build from this commit. Do not open the portable exe. Do not pass `--reset-pin`.
+- **Symptom:** an offline sale saves, and once it reaches the shop the figures are right. While it is still on the till, the remaining stock count is wrong. It shows some stock at the start, then stops showing those products.
+- **Routes:** none for the count. The sale is still `POST /api/sales` when the line returns. The count on the Windows till is `shelf_batches` in the device file.
+- **From:** the browser shelf cut was not the till they sell on. The Windows till stored stock as JSON and also held every queued sale. Every stock read added that hold on top of a quantity the same sale had already cut. Available went to zero, so Sell stopped offering the product. A download could put the shop's old count back, or cut the sale again. The hold used the sell quantity, not base units.
+- **To:** the device file runs the shop's guarded stock `UPDATE`. That is the only cut on this till. Free stock, soonest expiry, then the oldest receipt, in base units. A hire does not leave the shelf. This till's own sale is not held on top of that cut. Other tills may still reduce what this till offers. A download replays each unsynced sale once. A second replay without a new download does nothing. A thrown local update does not fail a recorded sale.
+- **Why:** the cashier has to see what is left before the line returns. The shop already records the sale correctly. Hiding the product is not a count.
+- **Functions:** `applyLines` in `destop-stockridge/lib/stock-sql.js`. `applySale` and `replayShelf` in `lib/device-store.js`. `applyLocalSale` in `public/js/views/pos.js` calls that statement when the engine is sqlite. `replayShelf` in `public/js/sync.js` after a stock download.
+- **What breaks if this is altered:** putting this till's own hold back on the shelf read hides the product again. Cutting in JavaScript and also in SQL takes the units twice. A download that does not replay the outbox puts the old count back. Replaying on every stock-screen open takes the sale twice.
+- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they sell offline and the remaining count stays visible and drops by that sale. The unpacked till needs a build from this commit. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat the browser shelf commit as this fix.
 
 ## What each screen reads
 

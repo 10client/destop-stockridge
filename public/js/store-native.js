@@ -80,12 +80,11 @@
     await ready();
     const options = opts || {};
     let list = await native.all(table);
-    if (table === 'stock_batches' && native.reservedByProduct) {
-      const local = await native.reservedByProduct();
-      const remote = await native.metaGet('hub_reservations') || {};
-      const holds = Object.assign({}, remote);
-      for (const [id, qty] of Object.entries(local || {})) holds[id] = Number(holds[id] || 0) + Number(qty || 0);
-      list = applyHolds(list, holds);
+    // The shelf quantity is already the sale. Adding this till's own hold on
+    // top of that cut is what made the product show, then disappear. Other
+    // tills' holds still reduce what this till offers.
+    if (table === 'stock_batches' && native.offeredHolds) {
+      list = applyHolds(list, await native.offeredHolds());
     }
     if (options.where) list = list.filter(options.where);
     if (options.orderBy && SR.util && SR.util.by) list.sort(SR.util.by(options.orderBy, options.dir || 1));
@@ -203,6 +202,10 @@
     outboxCount: async () => { await ready(); return native.outboxCount(); },
     updateOutbox: async (clientId, patch) => { await ready(); return native.outboxUpdate(clientId, patch); },
     removeOutbox: async (clientId) => { await ready(); return native.outboxDelete(clientId); },
+    applySale: async (record) => { await ready(); return native.applySale(record || {}); },
+    applyAdjust: async (record) => { await ready(); return native.applyAdjust(record || {}); },
+    replayShelf: async () => { await ready(); return native.replayShelf(); },
+    offeredHolds: async () => { await ready(); return native.offeredHolds(); },
     markFailed: async (clientId, detail) => { await ready(); return native.markFailed(clientId, detail || {}); },
     markSynced: async (clientId, serverRef) => { await ready(); return native.markSynced(clientId, serverRef); },
     purgeSynced: async (opts) => { await ready(); return native.purgeSynced(opts && opts.olderThanHours); },

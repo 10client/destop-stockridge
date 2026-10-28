@@ -50,7 +50,7 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 22. Do not say the shop is up unless a probe of `/api/health` actually answered. An offline sign-in used to show "The shop is up, but this screen did not load. Try again." and the saved page never opened. When the shop did not answer, open the saved till and paint the saved figures. A phone with no network is offline. Electron must not use that browser flag: the proxy on this computer can still answer. Do not open an expired saved sign-in when the probe has answered. The PIN is not stored.
 
-23. An offline sale must take the same stock the shop will take. Base units, from the unit ladder. Free stock only: `quantity` minus `quantity_reserved`. Soonest expiry, then the oldest receipt. A hire or a lease does not leave the shelf. Do not eat a reserved batch and then hide it, or the remaining count stays too high. A later catalogue download must not put the old count back while that sale is still in the outbox. Replay the unsynced sale onto the downloaded shelf. Stock and Products show that shelf until the sale has reached the shop.
+23. An offline sale must take the same stock the shop will take. On the Windows till that statement is SQL in the device file, the same guarded `UPDATE` the shop runs. One cut, in base units, free stock only, soonest expiry, then the oldest receipt. A hire or a lease does not leave the shelf. Do not also hold those units on this till. A hold on top of a quantity the sale already cut is how the product shows and then disappears. Other tills may still reduce what this till offers. A catalogue download must not put the old count back while the sale is still in the outbox, and it must not cut the same sale twice. A local stock update that throws must not fail a sale the till has already recorded.
 
 12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence or the saved-till door (`offline: true`). Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
 
@@ -142,6 +142,16 @@ The chip said **Not saved** after **Saving…**. The catalogue pull used the sam
 
 Fix: give the catalogue download 55 seconds, write products first, and keep a group that already arrived. **Not saved** now means nothing is on the till, and the sentence says which true reason it is. Rows on the till are not called **Not saved**.
 
+### Offline stock showed, then the products disappeared
+
+An offline sale saved, and once it reached the shop the figures were right. On the till, some stock showed at the start and then those products stopped showing.
+
+The first attempt cut the quantity in the browser and replayed the outbox after a download. That was not the till they sell on. The Windows till also held the same sale in `reservations` and added that hold on every stock read. The shelf quantity and the hold were the same units. Available went to zero. Sell then skipped the product. A download could also put the shop's old count back, or cut the sale a second time.
+
+Fix: the device file keeps a `shelf_batches` table and runs the shop's stock `UPDATE`. That is the only cut on this till. This till's own queued sale is not held on top of it. A download replays each unsynced sale once onto the shop's count. A second replay, without a new download, does nothing. The sale is already recorded if that update throws.
+
+This is not confirmed until they sell offline on the unpacked program built from the commit that contains this rule, and the remaining count stays visible and drops by that sale.
+
 ## Before the next change
 
 - If the screen says **Failed to fetch** or **That failed.**, the window called the wrong host, or the proxy mislabelled the body. Do not add a direct Worker fetch to "fix" it.
@@ -151,3 +161,4 @@ Fix: give the catalogue download 55 seconds, write products first, and keep a gr
 - If a connected sign-in says the saved sign-in has expired, the shop answer was not read. Do not open the expired saved till while the shop is up.
 - If the build says the output file is locked, do not wait on the portable exe. Build the unpacked program and open `dist\win-unpacked\StockRidge.exe`.
 - If a connected sign-in shows the offline dashboard, the read gave up too soon, or a browser offline flag was treated as the shop. Do not leave that banner up when the shop answers. Do not flip the chip from one miss. A sale made while the shop is down must stay saved on this till.
+- If offline stock shows and then the products disappear, this till held the sale and also cut the quantity. Do not put that hold back. The count is the shelf statement. Do not mark it fixed until they see the remaining count stay on screen and drop by the sale.
