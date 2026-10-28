@@ -278,7 +278,7 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **Why:** the cashier has to see what is left before the line returns. The shop already records the sale correctly. Hiding the product is not a count.
 - **Functions:** `applyLines` in `destop-stockridge/lib/stock-sql.js`. `applySale` and `replayShelf` in `lib/device-store.js`. `applyLocalSale` in `public/js/views/pos.js` calls that statement when the engine is sqlite. `replayShelf` in `public/js/sync.js` after a stock download.
 - **What breaks if this is altered:** putting this till's own hold back on the shelf read hides the product again. Cutting in JavaScript and also in SQL takes the units twice. A download that does not replay the outbox puts the old count back. Replaying on every stock-screen open takes the sale twice.
-- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they sell offline and the remaining count stays visible and drops by that sale. The unpacked till needs a build from this commit. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat the browser shelf commit as this fix.
+- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they sell offline and the remaining count stays visible and drops by that sale. Destop `f7f7c4c`. Stockridge `069431a`. The unpacked till needs a build from those commits. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat stockridge `00445b6` or destop `52f591c` as this fix.
 
 ## What each screen reads
 
