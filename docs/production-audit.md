@@ -247,6 +247,17 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** removing `applyLocalSale`, or calling it before it exists, brings the error back after the sale is saved. Charging a different total from the bill splits the receipt from the books. Do not store the sign-in PIN in the payment code. Do not take a second payment for a bill that is already paid.
 - **Outcome:** **Not confirmed.** Not deployed. The till they rebuild from this commit stops the `applyLocalSale` error and shows the payment-code box. The live shop does not know the code until they ask for a deploy. Do not mark this Success until Complete sale shows the receipt, and a bill paid by its code prints that total with the staff name. Do not pass `--reset-pin`.
 
+### 19. After a sale the screen stays on the cart, and Take payment says add something to the bill
+
+- **Symptom:** an item is put in the cart. After it is cancelled or completed, the screen stays on the card that shows the selected products. It does not return to the card that shows Take payment. Clicking Take payment then says "Add something to the bill first."
+- **Routes:** none. This is the Sell screen in `public/js/views/pos.js`. The same file is served by the PWA and staged into the unpacked till.
+- **From:** Find, the cart, and Take payment were all on one page. On a narrow screen the cart stayed in view after the sale. The Take payment button called `raiseBill` even when the cart was empty, and that function warned instead of moving to a card that could take a payment.
+- **To:** Sell has three cards: Find goods, Cart, and Take payment. Adding a product opens Cart. Cancelling or completing a sale clears the cart and opens Take payment. An empty Take payment card does not print a bill. It pays a printed bill, or opens Find goods.
+- **Why:** the cashier has to know which card they are on. A finished sale must not look like the goods are still selected, and Take payment must not refuse an empty cart with a bill warning.
+- **Functions:** `showStep`, `resetTill`, and `primaryAction` in `public/js/views/pos.js`. The step bar is `.sell-nav` in `public/css/app.css`.
+- **What breaks if this is altered:** putting Find, Cart, and Take payment back on one scrolling page brings the stuck cart card back on a phone. Calling `raiseBill` when the cart is empty brings the warning back. Do not hide the step bar.
+- **Outcome:** **Not confirmed.** Not marked Success until they open Sell, add a product, cancel or complete it, and land on Take payment without the bill warning. The PWA needs this file. The unpacked till needs a build from this commit. Do not open the portable exe. Do not pass `--reset-pin`.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.
