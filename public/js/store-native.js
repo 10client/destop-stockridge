@@ -205,6 +205,8 @@
     applySale: async (record) => { await ready(); return native.applySale(record || {}); },
     applyAdjust: async (record) => { await ready(); return native.applyAdjust(record || {}); },
     replayShelf: async () => { await ready(); return native.replayShelf(); },
+    stockOnHand: async (branchId) => { await ready(); return native.stockOnHand(branchId); },
+    receivedOnHand: async (branchId) => { await ready(); return native.receivedOnHand(branchId); },
     offeredHolds: async () => { await ready(); return native.offeredHolds(); },
     markFailed: async (clientId, detail) => { await ready(); return native.markFailed(clientId, detail || {}); },
     markSynced: async (clientId, serverRef) => { await ready(); return native.markSynced(clientId, serverRef); },

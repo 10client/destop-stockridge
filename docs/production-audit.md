@@ -280,6 +280,17 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** putting this till's own hold back on the shelf read hides the product again. Cutting in JavaScript and also in SQL takes the units twice. A download that does not replay the outbox puts the old count back. Replaying on every stock-screen open takes the sale twice.
 - **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they sell offline and the remaining count stays visible and drops by that sale. Destop `f7f7c4c`. Stockridge `069431a`. The unpacked till needs a build from those commits. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat stockridge `00445b6` or destop `52f591c` as this fix.
 
+### 22. Offline details are invalid, and stock in hand is off
+
+- **Symptom:** after Saving finishes, the offline details do not match the shop. Stock in hand is the example.
+- **Routes:** none for the offline figure. The download is still `POST /api/sync/pull`. The shop figure is `GET /api/stock`.
+- **From:** the saved download stayed a JSON blob. The till added that blob up, and a partial shelf table did not keep the product, the cost, or the branch the shop joins. That total is not stock in hand.
+- **To:** when the save has saved, the usable rows are written into the shop's tables on the device file: products, categories, units, batches, customers, prices, purchase orders, and the other catalogue tables this till already pulls. Stock in hand is the shop's sum of `stock_batches.quantity` for that shop, joined to the saved product, excluding quarantine and expired. Available is quantity minus reserved. A sale cuts the cloned batch, so the next read is the new sum. The PIN is not stored.
+- **Why:** offline and online have to be the same rows. A second total from JSON will not stay in step with the shop.
+- **Functions:** `upsert` and `stockOnHand` in `destop-stockridge/lib/shop-clone.js`. `putMany` in `lib/device-store.js` writes those tables in the same save. `fromMirror` in `public/js/views/stock.js` reads that sum.
+- **What breaks if this is altered:** reading the JSON blob again makes stock in hand drift. Dropping the product join makes the sum zero. Putting a secret column on the device file stores something the till must not keep.
+- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they save and the offline stock in hand matches the shop. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat `f7f7c4c` or `069431a` as this fix.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.

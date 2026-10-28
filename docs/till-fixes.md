@@ -52,6 +52,8 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 23. An offline sale must take the same stock the shop will take. On the Windows till that statement is SQL in the device file, the same guarded `UPDATE` the shop runs. One cut, in base units, free stock only, soonest expiry, then the oldest receipt. A hire or a lease does not leave the shelf. Do not also hold those units on this till. A hold on top of a quantity the sale already cut is how the product shows and then disappears. Other tills may still reduce what this till offers. A catalogue download must not put the old count back while the sale is still in the outbox, and it must not cut the same sale twice. A local stock update that throws must not fail a sale the till has already recorded.
 
+24. When Saving has saved, the usable rows are in the shop's tables on this computer, not only in a JSON blob. Stock in hand is the shop's sum of `stock_batches.quantity` for that shop, joined to the saved product, excluding quarantine and expired. Do not add the blob up and call that the count. Do not store the PIN in those tables.
+
 12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence or the saved-till door (`offline: true`). Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
 
 13. A gateway 502 is not the last word. Try IPv4, then the certificate an antivirus inserted, then Chromium on the computer's proxy, then the other host of the same books. Do not set the session proxy to `direct`. Do not count the saved-till door as the shop. Do not paint **You are offline** or **Offline —** on a screen while the shop has answered.
@@ -152,6 +154,12 @@ Fix: the device file keeps a `shelf_batches` table and runs the shop's stock `UP
 
 This is not confirmed until they sell offline on the unpacked program built from the commit that contains this rule, and the remaining count stays visible and drops by that sale.
 
+### Saved offline details were not the shop's figures
+
+Stock in hand on the offline screens did not match the shop. Saving had stored the download as JSON, and the till then added up that blob. A partial shelf table dropped cost, branch, and the product row the shop joins. The number on screen was not the shop's sum.
+
+Fix: when a download has saved, the usable rows are written into the same tables the shop uses: products, categories, units, batches, customers, purchase orders, and the rest of the catalogue the till already pulls. Stock in hand is the shop's sum of `stock_batches.quantity`, joined to the saved product, excluding quarantine and expired. Available is that quantity minus reserved. A sale cuts the cloned batch with the shop's statement, so the next read is the new sum. The PIN is not a column. This is not confirmed until they open the unpacked program, save, and the offline stock in hand matches the shop.
+
 ## Before the next change
 
 - If the screen says **Failed to fetch** or **That failed.**, the window called the wrong host, or the proxy mislabelled the body. Do not add a direct Worker fetch to "fix" it.
@@ -162,3 +170,4 @@ This is not confirmed until they sell offline on the unpacked program built from
 - If the build says the output file is locked, do not wait on the portable exe. Build the unpacked program and open `dist\win-unpacked\StockRidge.exe`.
 - If a connected sign-in shows the offline dashboard, the read gave up too soon, or a browser offline flag was treated as the shop. Do not leave that banner up when the shop answers. Do not flip the chip from one miss. A sale made while the shop is down must stay saved on this till.
 - If offline stock shows and then the products disappear, this till held the sale and also cut the quantity. Do not put that hold back. The count is the shelf statement. Do not mark it fixed until they see the remaining count stay on screen and drop by the sale.
+- If offline stock in hand does not match the shop, the screen added up a JSON blob. Read the cloned `stock_batches` with the shop's sum. Do not invent a second total. Do not mark it fixed until they see the saved offline figure match.

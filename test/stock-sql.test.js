@@ -184,3 +184,44 @@ test('soonest expiry is the batch the statement cuts', () => {
   assert.equal(store.get('stock_batches', 'old').quantity, 10);
   store.close();
 });
+
+test('saved rows land in the shop tables and stock in hand is the shop sum', () => {
+  const store = tempStore();
+  store.putMany('product_categories', [{ id: 'cat', code: 'FANS', name: 'Fans', is_deleted: 0 }]);
+  store.putMany('products', [{
+    id: 'fan', name: 'Standing fan', sku: 'FAN-1', category_id: 'cat',
+    base_unit_name: 'Piece', cost_price: 4000, selling_price: 6500,
+    reorder_level: 2, is_deleted: 0,
+  }]);
+  store.putMany('purchase_orders', [{ id: 'po1', branch_id: 'shop', status: 'RECEIVED', is_deleted: 0 }]);
+  store.putMany('stock_batches', [
+    batch('b1', { quantity: 10, cost_price_per_unit: 4000, purchase_order_id: 'po1' }),
+    batch('held', { quantity: 3, quantity_reserved: 1, cost_price_per_unit: 4000, purchase_order_id: 'po1' }),
+    batch('bad', { quantity: 50, status: 'QUARANTINED', cost_price_per_unit: 4000 }),
+  ]);
+  store.putMany('users', [{ id: 'u1', full_name: 'Ada', username: 'ada', pin_hash: 'nope', role: 'CASHIER' }]);
+  const before = store.stockOnHand('shop');
+  assert.equal(before.length, 1);
+  assert.equal(before[0].name, 'Standing fan');
+  assert.equal(before[0].sku, 'FAN-1');
+  assert.equal(before[0].on_shelf, 13);
+  assert.equal(before[0].reserved, 1);
+  assert.equal(before[0].available, 12);
+  assert.equal(before[0].stock_value, 52000);
+  assert.equal(store.receivedOnHand('shop')[0].on_hand, 12);
+  store.applySale({
+    client_id: 'sale-hand',
+    lines: [{ product_id: 'fan', quantity: 1, unit_code: 'PIECE' }],
+    sold_at: '2026-10-28 09:00:00',
+  });
+  const after = store.stockOnHand('shop')[0];
+  assert.equal(after.on_shelf, 12);
+  assert.equal(after.available, 11);
+  assert.equal(store.get('users', 'u1').pin_hash, undefined);
+  const file = store.file;
+  store.close();
+  const again = new DeviceStore(file);
+  assert.equal(again.stockOnHand('shop')[0].on_shelf, 12);
+  assert.equal(again.get('products', 'fan').name, 'Standing fan');
+  again.close();
+});

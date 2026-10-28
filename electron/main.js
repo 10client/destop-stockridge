@@ -24,7 +24,7 @@ const METHODS = new Set([
   'logPut', 'logAll', 'logClear',
   'exportAll', 'importAll', 'info',
   'reserve', 'reserveFromSale', 'reservedByProduct', 'dropReservation',
-  'applySale', 'applyAdjust', 'replayShelf', 'offeredHolds',
+  'applySale', 'applyAdjust', 'replayShelf', 'offeredHolds', 'stockOnHand', 'receivedOnHand',
   'rememberVerifier', 'checkVerifier', 'hasVerifier', 'listVerifiers',
 ]);
 
