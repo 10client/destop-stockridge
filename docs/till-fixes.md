@@ -54,7 +54,7 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 24. When Saving has saved, the usable rows are in the shop's tables on this computer, not only in a JSON blob. Stock in hand is the shop's sum of `stock_batches.quantity` for that shop, joined to the saved product, excluding quarantine and expired. Do not add the blob up and call that the count. Do not store the PIN in those tables.
 
-25. Saved means the catalogue and the sales book are both on this till. A catalogue-only save is Part saved. The sales book is `sales`, `sale_items`, `sale_payments`, bills, and the other sales tables, written into the device file. Do not say the till is ready for a full offline day when those rows were not stored. A product with units still on the shelf stays on the sell list. A hold may lower the count. It must not remove the row.
+25. Saved means the catalogue and the sales book are both on this till, the shop accepted this session, and the stored product count is not short of the shop. A catalogue-only save is Part saved. A refused session is not Saved, and the sentence is shown in full: "The shop did not accept this session, so the catalogue was not copied." Do not cut that sentence. Do not say Saved from an old `last_pull_at` or an old `sales_copy_at` after the shop refused the session. Do not say Saved when the till has 20 products and the shop has 50. The sales book is `sales`, `sale_items`, `sale_payments`, bills, and the other sales tables, written into the device file. A product with units still on the shelf stays on the sell list. A hold may lower the count. It must not remove the row.
 
 12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence or the saved-till door (`offline: true`). Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
 
@@ -161,6 +161,12 @@ This is not confirmed until they sell offline on the unpacked program built from
 Stock in hand on the offline screens did not match the shop. Saving had stored the download as JSON, and the till then added up that blob. A partial shelf table dropped cost, branch, and the product row the shop joins. The number on screen was not the shop's sum.
 
 Fix: when a download has saved, the usable rows are written into the same tables the shop uses: products, categories, units, batches, customers, purchase orders, and the rest of the catalogue the till already pulls. Stock in hand is the shop's sum of `stock_batches.quantity`, joined to the saved product, excluding quarantine and expired. Available is that quantity minus reserved. A sale cuts the cloned batch with the shop's statement, so the next read is the new sum. The PIN is not a column. This is not confirmed until they open the unpacked program, save, and the offline stock in hand matches the shop.
+
+### Saved while the shop refused the session
+
+The Last error line was cut at "the catalogue was n." The card still said Saved, with 20 products and 11 stock rows, and said the catalogue and the sales book were on the till. The shop has 50 products. The same screen sometimes said Part saved.
+
+Fix: a refused session is not Saved, and that sentence is shown in full. The till asks the shop how many products it has. Fewer stored than that is Part saved, and the names are downloaded again. The chip and the Sync card use the same facts, so they do not flip. This is not confirmed until the opened till matches the shop. Do not deploy this to make the chip change. Do not mark it Success from the push.
 
 ## Before the next change
 

@@ -46,6 +46,31 @@ test('a running save, a refused sale, and an empty till are not finished', () =>
   assert.match(emptyShop.detail, /no products or stock/);
 });
 
+test('a refused session or a short catalogue is not Saved', () => {
+  const refused = decideSaveStatus({
+    lastPullAt: '2026-10-28 19:01:00',
+    stockRows: 11,
+    productRows: 20,
+    visibleProducts: 20,
+    salesCopied: true,
+    pullError: 'The shop did not accept this session, so the catalogue was not copied.',
+  });
+  assert.notEqual(refused.label, 'Saved');
+  assert.equal(refused.finished, false);
+  assert.match(refused.detail, /did not accept this session, so the catalogue was not copied/);
+  const short = decideSaveStatus({
+    lastPullAt: '2026-10-28 19:01:00',
+    stockRows: 11,
+    productRows: 20,
+    visibleProducts: 20,
+    shopProductCount: 50,
+    salesCopied: true,
+  });
+  assert.equal(short.label, 'Part saved');
+  assert.match(short.detail, /shop has 50 products/);
+  assert.match(short.detail, /till has 20/);
+});
+
 test('the till script uses the same decision as the library', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'save-status.js'), 'utf8');
   const sandbox = { window: {} };

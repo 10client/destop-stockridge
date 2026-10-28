@@ -763,30 +763,11 @@
       if (!SR.saveStatus || !SR.sync || !SR.store) return;
       painting = true;
       try {
-        const status = SR.sync.status();
-        const stats = await SR.sync.queueStats().catch(() => ({ pending: 0, failed: 0 }));
-        const lastPullAt = await SR.store.metaGet('last_pull_at').catch(() => null);
-        const truncated = await SR.store.metaGet('sync_truncated').catch(() => []);
-        const incomplete = await SR.store.metaGet('sync_incomplete_since').catch(() => null);
-        const pullError = await SR.store.metaGet('sync_pull_error').catch(() => null);
-        const catalogueEmpty = await SR.store.metaGet('catalogue_empty').catch(() => null);
-        const salesCopied = await SR.store.metaGet('sales_copy_at').catch(() => null);
-        const stock = await SR.store.all('stock_batches').catch(() => []);
-        const products = await SR.store.all('products').catch(() => []);
-        const report = SR.saveStatus.decide({
-          running: status.running,
-          online: SR.api.isOnline(),
-          pending: stats.pending,
-          failed: stats.failed,
-          lastPullAt,
-          truncated,
-          incomplete,
-          pullError,
-          catalogueEmpty,
-          stockRows: stock.length,
-          productRows: products.length,
-          salesCopied: Boolean(salesCopied),
-        });
+        const facts = await SR.sync.saveFacts();
+        const report = SR.saveStatus.decide(facts);
+        const lastPullAt = facts.lastPullAt;
+        const stock = { length: facts.stockRows };
+        const products = { length: facts.productRows };
         const chip = document.getElementById('save-chip');
         const label = document.getElementById('save-chip-label');
         if (chip && label && SR.state && SR.state.user) {
@@ -798,7 +779,15 @@
         } else if (chip) {
           chip.hidden = true;
         }
-        paintPage(report, { lastPullAt, stock: stock.length, products: products.length, pending: stats.pending, failed: stats.failed });
+        paintPage(report, {
+          lastPullAt,
+          stock: facts.stockRows,
+          products: facts.productRows,
+          visibleProducts: facts.visibleProducts,
+          shopProductCount: facts.shopProductCount,
+          pending: facts.pending,
+          failed: facts.failed,
+        });
       } finally {
         painting = false;
         if (paintAgain) { paintAgain = false; paint(); }
@@ -819,7 +808,11 @@
       }
       card.dataset.state = report.state;
       const when = counts.lastPullAt ? String(counts.lastPullAt).replace('T', ' ').slice(0, 16) : 'not yet';
-      card.innerHTML = '<div class="card-body"><h2>' + esc(report.label) + '</h2><p>' + esc(report.detail) + '</p><p class="sub" style="margin-top:8px">Catalogue saved: ' + esc(when) + ' · ' + counts.products + ' products · ' + counts.stock + ' stock rows · ' + counts.pending + ' waiting · ' + counts.failed + ' refused</p></div>';
+      const copyLabel = report.finished ? 'Catalogue saved' : 'Last copy';
+      const productLine = counts.shopProductCount
+        ? (counts.visibleProducts + ' of ' + counts.shopProductCount + ' products')
+        : (counts.products + ' products');
+      card.innerHTML = '<div class="card-body"><h2>' + esc(report.label) + '</h2><p>' + esc(report.detail) + '</p><p class="sub" style="margin-top:8px">' + copyLabel + ': ' + esc(when) + ' · ' + productLine + ' · ' + counts.stock + ' stock rows · ' + counts.pending + ' waiting · ' + counts.failed + ' refused</p></div>';
     }
     paint();
     if (SR.sync.on) SR.sync.on('change', () => { paint(); });

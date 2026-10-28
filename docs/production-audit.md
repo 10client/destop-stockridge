@@ -300,7 +300,18 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **Why:** offline has to show the same sales facts the shop holds. A chip that says Saved before those rows are stored is a false ready.
 - **Functions:** `copySalesBook` in `public/js/sync.js`. `upsert` in `destop-stockridge/lib/shop-clone.js`. `decideSaveStatus` in `lib/save-status.js`. `sellableIndex` in `public/js/views/pos.js`.
 - **What breaks if this is altered:** saying Saved after the catalogue alone brings back the false ready. Dropping a product because its free count is zero brings back the blank sell list. Putting a Turso token on the till is not the copy.
-- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they leave the till connected until it says Saved, sign in offline, and the sales list and the sell products stay. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat `5882d81` as this fix.
+- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they leave the till connected until it says Saved, sign in offline, and the sales list and the sell products stay. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat `5882d81` as this fix. Do not treat the sales-book push as the false-Saved fix in the next row.
+
+### 24. Saved while the shop refused the session, and 20 products against 50
+
+- **Symptom:** Last error was cut to "The shop did not accept this session, so the catalogue was n." The card said Saved, "The catalogue and the sales book are on this till. You can disconnect." Stamp `Catalogue saved: 2026-10-28 19:01 · 20 products · 11 stock rows`. The shop has 50 products. The same screen sometimes said Part saved.
+- **Routes:** the chip and the Sync card both have to use one decision. The count is `GET /api/products` paging total against the products stored on the till. The till does not open Turso.
+- **From:** the error was sliced to 60 characters. An old `last_pull_at` and `sales_copy_at` still meant Saved after the shop refused the session. The Sync card omitted the sales-book fact, so it flipped to Part saved. The product count was the rows stored here, not the shop total.
+- **To:** a refused session is not Saved, and the sentence is shown in full. A till that has fewer products than the shop is Part saved, and it downloads the names again before anyone is told to disconnect. Both painters use the same facts.
+- **Why:** Saved is a promise that this copy is the shop. A refused session, or 20 stored against 50 at the shop, is not that promise.
+- **Functions:** `decideSaveStatus` in `lib/save-status.js`. `ensureCatalogue` and `saveFacts` in `public/js/sync.js`. `paintFinishedSaving` in `public/js/views/sync.js`. `installSaveIndicator` in `public/js/desktop-production.js`.
+- **What breaks if this is altered:** slicing the error, or trusting an old stamp after a refused session, brings the false Saved back. Counting only the rows on the till hides a short catalogue.
+- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until the chip matches the shop: no Saved after a refused session, and no Saved while the till has fewer products than the shop. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat destop `5a23ab1` or stockridge `bb11e81` as this fix.
 
 ## What each screen reads
 
