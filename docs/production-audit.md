@@ -258,6 +258,17 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** putting Find, Cart, and Take payment back on one scrolling page brings the stuck cart card back on a phone. Calling `raiseBill` when the cart is empty brings the warning back. Do not hide the step bar.
 - **Outcome:** **Not confirmed.** PWA deployed 2026-10-28 because they asked for it on the PWA. Sample stamp `ridge-20261028-0905-4a9e95e`. Office stamp `ridge-20261028-0906-4a9e95e`. Stockridge `4a9e95e`. PIN unchanged. Not marked Success until they open Sell, add a product, cancel or complete it, and land on Take payment without the bill warning. The unpacked till does not have this until they build it. Do not open the portable exe. Do not pass `--reset-pin`.
 
+### 20. Offline sign-in says the shop is up and the page did not load
+
+- **Symptom:** offline on the PWA, sign-in pops up "The shop is up, but this screen did not load. Try again." The saved page does not open.
+- **Routes:** `POST /api/auth/login`, then `GET /api/dashboard`. The same screens are staged into the unpacked till.
+- **From:** one missed call was worded as if the shop had answered, before the health probe had answered. The dashboard then refused the saved figures while the chip still said online.
+- **To:** "The shop is up" is used only after `/api/health` answers. If the shop does not answer, sign-in opens the saved till and the dashboard paints the saved figures. A phone with no network does not wait on a dead sign-in. Electron does not trust that browser flag.
+- **Why:** an offline cashier has to get into the till they already saved. A sentence that the shop is up, with Try again, blocks that.
+- **Functions:** `settleMiss` and `shopConfirmed` in `public/js/api.js`, `doLogin` in `public/js/app.js`, `refresh` in `public/js/views/dashboard.js`. The till window also softens that sentence in `desktop-production.js` when the shop has not answered.
+- **What breaks if this is altered:** putting the "shop is up" sentence back on a failed probe brings the popup back. Trusting the browser offline flag inside Electron marks a working proxy offline. Opening the saved till after a probe has answered brings back the expired-session sign-in.
+- **Outcome:** **Not confirmed.** Not marked Success until they sign in on the PWA with no connection and the saved page opens, without that sentence. The unpacked till needs a build from this commit. Do not open the portable exe. Do not pass `--reset-pin`. Do not store the PIN.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.

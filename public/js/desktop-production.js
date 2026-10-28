@@ -224,12 +224,18 @@
     if (!ui || !ui.errorBlock || ui.errorBlock.desktopWrapped) return;
     const orig = ui.errorBlock.bind(ui);
       function errorBlock(err, opts) {
+      const message = String((err && err.message) || '');
+      if (shopUp !== true && /shop is up/i.test(message)) {
+        const soft = new Error('The shop did not answer from this window. Figures saved on this till are still here.');
+        soft.code = 'OFFLINE';
+        soft.isOffline = true;
+        return orig(soft, opts);
+      }
       if (shopUp === true) {
-        const up = new Error((err && err.message) || 'This screen did not load. Try again.');
+        const up = new Error(message || 'This screen did not load. Try again.');
         up.code = 'SHOP_READ_FAILED';
         return orig(up, opts);
       }
-      const message = String((err && err.message) || '');
       const missed = /failed to fetch/i.test(message)
         || (err && (err.isOffline || err.code === 'OFFLINE' || err.code === 'UPSTREAM_UNREACHABLE'));
       if (!missed) return orig(err, opts);
