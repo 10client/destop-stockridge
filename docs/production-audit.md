@@ -267,7 +267,7 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **Why:** an offline cashier has to get into the till they already saved. A sentence that the shop is up, with Try again, blocks that.
 - **Functions:** `settleMiss` and `shopConfirmed` in `public/js/api.js`, `doLogin` in `public/js/app.js`, `refresh` in `public/js/views/dashboard.js`. The till window also softens that sentence in `desktop-production.js` when the shop has not answered.
 - **What breaks if this is altered:** putting the "shop is up" sentence back on a failed probe brings the popup back. Trusting the browser offline flag inside Electron marks a working proxy offline. Opening the saved till after a probe has answered brings back the expired-session sign-in.
-- **Outcome:** **Not confirmed.** Not marked Success until they sign in on the PWA with no connection and the saved page opens, without that sentence. The unpacked till needs a build from this commit. Do not open the portable exe. Do not pass `--reset-pin`. Do not store the PIN.
+- **Outcome:** **Not confirmed.** PWA deployed 2026-10-28. Sample and office stamp `ridge-20261028-0933-a211d23`. Stockridge `a211d23`. PIN unchanged. Not marked Success until they sign in on the PWA with no connection and the saved page opens, without that sentence. The unpacked till needs a build from this commit. Do not open the portable exe. Do not pass `--reset-pin`. Do not store the PIN.
 
 ## What each screen reads
 
