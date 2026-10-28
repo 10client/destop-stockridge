@@ -54,6 +54,8 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 24. When Saving has saved, the usable rows are in the shop's tables on this computer, not only in a JSON blob. Stock in hand is the shop's sum of `stock_batches.quantity` for that shop, joined to the saved product, excluding quarantine and expired. Do not add the blob up and call that the count. Do not store the PIN in those tables.
 
+26. A line that returns does not sign the till out. The person stays on the saved session. This computer's SQL is the follower. Turso, behind the Worker, is the leader. This till does not open Turso and does not hold a Turso token. When the line returns, push the local outbox, then copy the leader's catalogue. Do not call that catch-up a sign-out. A signature from the other host is not this shop ending the session. Another device signs this till out only when the same shop says so twice, after the line has settled.
+
 25. Saved means the catalogue and the sales book are both on this till, the shop accepted this session, and the stored product count is not short of the shop. A catalogue-only save is Part saved. A refused session is not Saved, and the sentence is shown in full: "The shop did not accept this session, so the catalogue was not copied." Do not cut that sentence. Do not say Saved from an old `last_pull_at` or an old `sales_copy_at` after the shop refused the session. Do not say Saved when the till has 20 products and the shop has 50. The sales book is `sales`, `sale_items`, `sale_payments`, bills, and the other sales tables, written into the device file. A product with units still on the shelf stays on the sell list. A hold may lower the count. It must not remove the row.
 
 12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence or the saved-till door (`offline: true`). Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
@@ -171,6 +173,7 @@ Fix: a refused session is not Saved, and that sentence is shown in full. The til
 ## Before the next change
 
 - If the screen says **Failed to fetch** or **That failed.**, the window called the wrong host, or the proxy mislabelled the body. Do not add a direct Worker fetch to "fix" it.
+- If the till signs the person out when the line returns, that is the reconnect bug. Keep the saved session. Do not treat the other host's signature as this shop ending the session. Do not put a Turso token on the till.
 - If the screen says the account is on another device right after sign-in on this till, check the device id and the old token. Do not allow two live sessions to silence it.
 - If a rebuild does not change what the window runs, the screen cache is hiding the shipped file. The shipped file must win.
 - If a different person sees the shop-did-not-answer sentence, they have not been saved on this till yet. Save them when the shop accepts them. Do not keep only the last person, and do not store the PIN to skip the shop.

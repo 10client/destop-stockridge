@@ -313,6 +313,17 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** slicing the error, or trusting an old stamp after a refused session, brings the false Saved back. Counting only the rows on the till hides a short catalogue.
 - **Outcome:** **Not confirmed.** Not deployed. Not marked Success until the chip matches the shop: no Saved after a refused session, and no Saved while the till has fewer products than the shop. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat destop `5a23ab1` or stockridge `bb11e81` as this fix.
 
+### 25. The line returns and the till signs the person out
+
+- **Symptom:** the till is open offline. When the network returns, the person is signed out. That is wrong.
+- **Routes:** `GET /api/auth/me` and `POST /api/sync/push` when the browser `online` event fires. The other host of the same books can answer `Invalid token signature`. The till does not open Turso.
+- **From:** the session check and the sync cycle ran in the same breath as the line returning. A refusal, or the other host's signature, cleared the token and showed the login page.
+- **To:** the saved till stays open. This computer's SQL is the follower. Turso, behind the Worker, is the leader. The follower pushes its outbox, then copies the leader's catalogue. A signature from the other host is dropped. Another device signs this till out only when the same shop confirms it twice after the line has settled.
+- **Why:** a counter that was selling offline must still be that person when the line returns. The shop is the leader of the books, not a reason to throw the session away.
+- **Functions:** `decideSessionHold` in `lib/session-hold.js`. `handleAuthFailure` in `public/js/app.js`. `resumeAfterLine` in `public/js/sync.js`. `foreignSignature` in `electron/server.js`.
+- **What breaks if this is altered:** treating the first answer after the line returns as a dead session brings the logout back. Putting a Turso token on the till is not the follower. Signing out on one `SESSION_SUPERSEDED` before the line has settled breaks one account, one device in the other direction.
+- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they sell offline, the line returns, and they are still signed in, with the queued sale uploading. Do not open the portable exe. Do not pass `--reset-pin`. Do not put a Turso token on the till.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.

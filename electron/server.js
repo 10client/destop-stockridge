@@ -403,6 +403,14 @@ function sessionBlip(upstream) {
   return /NO_TOKEN|SESSION_SUPERSEDED/.test(text);
 }
 
+// The other host signs with its own secret. Its "Invalid token signature" is
+// not this shop ending the session. Returning it was how a line that came
+// back signed the till out. Drop it and let the saved till answer.
+function foreignSignature(upstream) {
+  const text = responseText(upstream);
+  return /Invalid token signature|TOKEN_BAD_SIGNATURE|\bBAD_TOKEN\b/.test(text);
+}
+
 function electronLostDevice(upstream, deviceId) {
   if (!deviceId || !upstream || Number(upstream.status) !== 401) return false;
   return responseText(upstream).includes('SESSION_SUPERSEDED');
@@ -627,7 +635,8 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
             timeout: readBudgets(url).sibling,
           });
           const plain = decodeUpstream(got);
-          if (shopSpoke(plain) && !sessionBlip(plain)) upstream = plain;
+          if (foreignSignature(plain)) { /* not this shop's session */ }
+          else if (shopSpoke(plain) && !sessionBlip(plain)) upstream = plain;
           else if (sessionBlip(plain)) blip = plain;
         } catch (err) { /* the other host did not answer either */ }
       }
@@ -649,4 +658,4 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip, foreignSignature };
