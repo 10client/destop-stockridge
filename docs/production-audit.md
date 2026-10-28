@@ -256,7 +256,7 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **Why:** the cashier has to know which card they are on. A finished sale must not look like the goods are still selected, and Take payment must not refuse an empty cart with a bill warning.
 - **Functions:** `showStep`, `resetTill`, and `primaryAction` in `public/js/views/pos.js`. The step bar is `.sell-nav` in `public/css/app.css`.
 - **What breaks if this is altered:** putting Find, Cart, and Take payment back on one scrolling page brings the stuck cart card back on a phone. Calling `raiseBill` when the cart is empty brings the warning back. Do not hide the step bar.
-- **Outcome:** **Not confirmed.** Not marked Success until they open Sell, add a product, cancel or complete it, and land on Take payment without the bill warning. The PWA needs this file. The unpacked till needs a build from this commit. Do not open the portable exe. Do not pass `--reset-pin`.
+- **Outcome:** **Not confirmed.** PWA deployed 2026-10-28 because they asked for it on the PWA. Sample stamp `ridge-20261028-0905-4a9e95e`. Office stamp `ridge-20261028-0906-4a9e95e`. Stockridge `4a9e95e`. PIN unchanged. Not marked Success until they open Sell, add a product, cancel or complete it, and land on Take payment without the bill warning. The unpacked till does not have this until they build it. Do not open the portable exe. Do not pass `--reset-pin`.
 
 ## What each screen reads
 
