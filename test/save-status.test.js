@@ -7,7 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { decideSaveStatus } = require('../lib/save-status');
 
-test('Saved means the catalogue is on the till and the queue is empty', () => {
+test('Saved means the catalogue and the sales book are on the till', () => {
   const saved = decideSaveStatus({
     lastPullAt: '2026-10-20 18:00:00',
     stockRows: 4,
@@ -15,9 +15,20 @@ test('Saved means the catalogue is on the till and the queue is empty', () => {
     pending: 0,
     failed: 0,
     online: true,
+    salesCopied: true,
   });
   assert.equal(saved.finished, true);
   assert.equal(saved.label, 'Saved');
+  const catalogueOnly = decideSaveStatus({
+    lastPullAt: '2026-10-20 18:00:00',
+    stockRows: 4,
+    productRows: 12,
+    pending: 0,
+    failed: 0,
+    online: true,
+  });
+  assert.equal(catalogueOnly.label, 'Part saved');
+  assert.match(catalogueOnly.detail, /sales book/);
 });
 
 test('a running save, a refused sale, and an empty till are not finished', () => {

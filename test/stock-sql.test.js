@@ -185,6 +185,40 @@ test('soonest expiry is the batch the statement cuts', () => {
   store.close();
 });
 
+test('a saved sale is a row in the sales table, not only a JSON note', () => {
+  const store = tempStore();
+  store.putMany('sales', [{
+    id: 'sale-1',
+    branch_id: 'shop',
+    business_id: 'biz',
+    receipt_no: 'R-100',
+    customer_name: 'Ada',
+    total: 6500,
+    amount_paid: 6500,
+    balance_due: 0,
+    status: 'COMPLETED',
+    sold_at: '2026-10-28 09:00:00',
+    is_deleted: 0,
+  }]);
+  store.putMany('sale_items', [{
+    id: 'line-1',
+    sale_id: 'sale-1',
+    product_id: 'fan',
+    product_name: 'Standing fan',
+    quantity: 1,
+    quantity_in_base: 1,
+    unit_price: 6500,
+    line_total: 6500,
+    is_deleted: 0,
+  }]);
+  const sale = store.get('sales', 'sale-1');
+  assert.equal(sale.receipt_no, 'R-100');
+  assert.equal(sale.customer_name, 'Ada');
+  assert.equal(sale.total, 6500);
+  assert.equal(store.all('sale_items')[0].product_name, 'Standing fan');
+  store.close();
+});
+
 test('saved rows land in the shop tables and stock in hand is the shop sum', () => {
   const store = tempStore();
   store.putMany('product_categories', [{ id: 'cat', code: 'FANS', name: 'Fans', is_deleted: 0 }]);

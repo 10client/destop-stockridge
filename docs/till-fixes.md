@@ -54,6 +54,8 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 24. When Saving has saved, the usable rows are in the shop's tables on this computer, not only in a JSON blob. Stock in hand is the shop's sum of `stock_batches.quantity` for that shop, joined to the saved product, excluding quarantine and expired. Do not add the blob up and call that the count. Do not store the PIN in those tables.
 
+25. Saved means the catalogue and the sales book are both on this till. A catalogue-only save is Part saved. The sales book is `sales`, `sale_items`, `sale_payments`, bills, and the other sales tables, written into the device file. Do not say the till is ready for a full offline day when those rows were not stored. A product with units still on the shelf stays on the sell list. A hold may lower the count. It must not remove the row.
+
 12. The shop's own answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence or the saved-till door (`offline: true`). Do not mark the till offline from `navigator.onLine`, the browser `offline` event, one missed screen, or a shop 401 rewritten as `OFFLINE`. Probe `/api/health`. The chip moves to Offline only after that probe misses twice. The dashboard must not show the Offline banner while `isOnline()` is true. The POS must not consult `navigator.onLine`.
 
 13. A gateway 502 is not the last word. Try IPv4, then the certificate an antivirus inserted, then Chromium on the computer's proxy, then the other host of the same books. Do not set the session proxy to `direct`. Do not count the saved-till door as the shop. Do not paint **You are offline** or **Offline —** on a screen while the shop has answered.

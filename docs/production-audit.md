@@ -291,6 +291,17 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** reading the JSON blob again makes stock in hand drift. Dropping the product join makes the sum zero. Putting a secret column on the device file stores something the till must not keep.
 - **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they save and the offline stock in hand matches the shop. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat `f7f7c4c` or `069431a` as this fix.
 
+### 23. Saved, then offline sales data is incomplete and products stop displaying
+
+- **Symptom:** the chip says Saved, so the till looks ready for a full offline day. After an offline sign-in the figures are incomplete and inaccurate. On Sell, a product starts to count and then stops displaying.
+- **Routes:** the sales book is still `GET /api/sales` and `GET /api/sales/:id` on the shop that is already live. The table pull is `POST /api/sync/pull` once that shop is updated. The till does not open Turso.
+- **From:** Saved meant the catalogue was present and the outbox was empty. Receipts, lines, and payments were not stored. The sell list dropped a product when a hold or a missing purchase-order link made the free count zero.
+- **To:** the device file has the sales tables: sales, sale items, payments, serials, returns, bills, bill holds, sale issues, change owed, till sessions, and serial numbers. A save copies that book. Saved is not shown until the copy has finished. A product with units still on the shelf stays on the sell list.
+- **Why:** offline has to show the same sales facts the shop holds. A chip that says Saved before those rows are stored is a false ready.
+- **Functions:** `copySalesBook` in `public/js/sync.js`. `upsert` in `destop-stockridge/lib/shop-clone.js`. `decideSaveStatus` in `lib/save-status.js`. `sellableIndex` in `public/js/views/pos.js`.
+- **What breaks if this is altered:** saying Saved after the catalogue alone brings back the false ready. Dropping a product because its free count is zero brings back the blank sell list. Putting a Turso token on the till is not the copy.
+- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they leave the till connected until it says Saved, sign in offline, and the sales list and the sell products stay. Do not open the portable exe. Do not pass `--reset-pin`. Do not treat `5882d81` as this fix.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.

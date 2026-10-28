@@ -770,6 +770,7 @@
         const incomplete = await SR.store.metaGet('sync_incomplete_since').catch(() => null);
         const pullError = await SR.store.metaGet('sync_pull_error').catch(() => null);
         const catalogueEmpty = await SR.store.metaGet('catalogue_empty').catch(() => null);
+        const salesCopied = await SR.store.metaGet('sales_copy_at').catch(() => null);
         const stock = await SR.store.all('stock_batches').catch(() => []);
         const products = await SR.store.all('products').catch(() => []);
         const report = SR.saveStatus.decide({
@@ -784,6 +785,7 @@
           catalogueEmpty,
           stockRows: stock.length,
           productRows: products.length,
+          salesCopied: Boolean(salesCopied),
         });
         const chip = document.getElementById('save-chip');
         const label = document.getElementById('save-chip-label');
