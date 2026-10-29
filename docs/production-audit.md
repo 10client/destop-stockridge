@@ -413,6 +413,16 @@ The chip, the bar, and the login line are not separate checks. They all read `SR
 - **What breaks if this is altered:** compiling the SQL library, or leaving Electron 33 under the new library, makes the window fail before the shop is drawn. Deleting `stockridge.db` is not the upgrade.
 - **Outcome:** **Not confirmed.** Not deployed. Do not pass `--reset-pin`. Do not delete the till database.
 
+### 32. The phone is not built by the Electron packager
+
+- **Symptom:** the same Windows machine that already builds the unpacked exe needs a way to build the Android app, without a second database and without touching the till file.
+- **From:** `android/` was a WebView project with no Gradle wrapper, so PowerShell could not build it the way the till is built. Android Studio from 2026 will also refuse the old plugin.
+- **To:** the phone stays a WebView around the same Worker. The build path is JDK 17, Android SDK Platform 35, Build-Tools 35.0.0, Android Gradle Plugin 8.7.3, Gradle 8.9, and `tools/android-from-electron.ps1`. The paper is `docs/android-from-the-electron-machine.pdf`. The script does not compile the ciphered SQL library and does not read `stockridge.db`.
+- **Why:** the Windows till file and the phone are different devices. One account, one device still stands. The Turso token stays on the Worker.
+- **Functions:** `android/`, `tools/android-from-electron.ps1`.
+- **What breaks if this is altered:** putting a Turso token in the APK, deleting the till file so the phone can start, or treating the APK as a deploy.
+- **Outcome:** **Not confirmed.** Not deployed. Do not pass `--reset-pin`. Do not delete the till database.
+
 ## Not production-ready
 
 - The exe they open may still be an older unpacked build, or the locked portable file from 20 Oct 2026 4:37:44 PM. Length of that old file was 77304820.

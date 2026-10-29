@@ -71,6 +71,6 @@ If Electron says it cannot open the native SQLite module, run `npm run rebuild` 
 
 ## What this is not
 
-The Android app is `android/`. It is a WebView around the same Worker, and it removes Download and Install. Chrome on the phone does not. Change `android/app/src/main/res/values/strings.xml` to the client's Worker before building their APK. The demonstration address must not ship to a shop. Offline SQLite on Android, a Play Store listing, and a signed release are not in this folder yet.
+The Android app is `android/`. It is a WebView around the same Worker, and it removes Download and Install. Chrome on the phone does not. It does not open `stockridge.db`. The machine that already builds the unpacked exe follows `docs/android-from-the-electron-machine.pdf` and runs `tools/android-from-electron.ps1`. Change the Worker in `android/app/src/main/res/values/strings.xml` before a client APK, and do not commit that client's address. The demonstration address must not ship to a shop. Offline SQLite on Android, a Play Store listing, and a signed release are not in this folder yet.
 
 The till file is SQLCipher. The LAN hub, a named receipt printer, and a hash-checked program download are in this folder. None of them opens Turso. The books the PWA and this window share are the Turso database behind the Worker.

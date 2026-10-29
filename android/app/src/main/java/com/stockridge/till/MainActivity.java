@@ -19,7 +19,11 @@ import java.util.regex.Pattern;
 /**
  * A WebView around the same Worker the browser uses. Chrome on the phone is
  * left alone, so the PWA still offers Download and Install. This app removes
- * those buttons from the page it loads. It does not hold a Turso token.
+ * those buttons from the page it loads.
+ *
+ * This is not the Windows till. It does not open stockridge.db, stockridge.key,
+ * or Turso. Sales still go through the Worker. The build paper is
+ * docs/android-from-the-electron-machine.pdf.
  */
 public class MainActivity extends Activity {
     private static final Pattern INSTALL_BUTTON = Pattern.compile(
