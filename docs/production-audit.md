@@ -335,6 +335,16 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** leaving the open till only on the shop brings back the empty drawer. Signing out on a page 401 brings back the logout. Putting a Turso token on the till is not the copy.
 - **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they open a till, sign out, sign in offline, and still see that drawer, and a page change as the line returns leaves them signed in. Do not open the portable exe. Do not pass `--reset-pin`.
 
+### 27. Part saved from a missing till column
+
+- **Symptom:** the chip said Part saved, and the detail was `SqliteError: table till_sessions has no column named cash_sales_total`. The same card already had 20 of 20 products.
+- **From:** the open-drawer copy named `cash_sales_total`. The till file had been created before that column. `CREATE TABLE IF NOT EXISTS` does not add a column to a table that already exists. The failed write was stored as a catalogue error.
+- **To:** the next open adds any missing clone column, then the write uses it. That SQL sentence is cleared from the chip. The catalogue count is unchanged.
+- **Why:** a missing drawer column is not a short product list. Deleting the till file would throw away the books already saved.
+- **Functions:** `align` in `lib/shop-clone.js`. `_clearSchemaSaveError` in `lib/device-store.js`.
+- **What breaks if this is altered:** naming a new column without adding it to the existing file brings the same SQLite error back, and the chip says Part saved again.
+- **Outcome:** **Not confirmed.** Not deployed. Do not delete `stockridge.db`. Do not pass `--reset-pin`.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.
