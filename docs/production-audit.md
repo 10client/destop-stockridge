@@ -403,6 +403,16 @@ The chip, the bar, and the login line are not separate checks. They all read `SR
 6. Take a sale with the shop unreachable. It must save on this till and leave **Saving…** when the write finishes. Opening another page must not return the login form. It must upload after the chip returns to Online.
 7. Do not deploy again unless asked. Do not reset a PIN. Do not pull the parent folder. The PWA deploy of 2026-10-23 does not replace the unpacked exe.
 
+### 31. The packager notice is not a reason to compile SQLite
+
+- **Symptom:** the Windows build printed that electron-builder 26.18.0 was newer than 25.1.8.
+- **From:** Electron 33 is out of security support. A builder bump on its own makes the packager recompile the ciphered SQL library, and that compile is what has left the till unable to open its file.
+- **To:** the runtime moves as one set. Electron 44.10.0, electron-builder 26.18.1, and better-sqlite3-multiple-ciphers 13.0.3. The SQL library ships an N-API prebuild that loads in Electron 44. `npmRebuild` is false, so the packager does not compile it. The build machine must be Node.js 22.12 or newer. Electron 45 and electron-builder 27 are not this set.
+- **Why:** a supported browser runtime is required, and the till file already on the computer has to open with the same cipher it was saved with.
+- **Functions:** `package.json`. `openDatabase` in `lib/sql-open.js`.
+- **What breaks if this is altered:** compiling the SQL library, or leaving Electron 33 under the new library, makes the window fail before the shop is drawn. Deleting `stockridge.db` is not the upgrade.
+- **Outcome:** **Not confirmed.** Not deployed. Do not pass `--reset-pin`. Do not delete the till database.
+
 ## Not production-ready
 
 - The exe they open may still be an older unpacked build, or the locked portable file from 20 Oct 2026 4:37:44 PM. Length of that old file was 77304820.

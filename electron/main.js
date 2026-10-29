@@ -217,7 +217,7 @@ async function boot() {
   try {
     // A normal browser signature. Cloudflare answers a bare Electron request
     // with 403 and no CORS headers, which the page reports as a failed load.
-    session.defaultSession.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36');
+    session.defaultSession.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36');
     // Antivirus that scans HTTPS puts its own certificate in the Windows store.
     // Chrome trusts that store. This window must trust the shop host the same way,
     // or the dashboard call dies before the shop can answer.

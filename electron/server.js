@@ -53,7 +53,7 @@ function insertScript(html, src) {
 // refusal has no CORS headers, so a window fetch reports a network failure.
 // The page stays on this computer. The proxy asks the shop with a normal
 // browser signature and returns the shop's own JSON.
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36';
 
 function desktopIndex(html) {
   const injected = html.includes('store-native.js')

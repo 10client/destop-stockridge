@@ -7,28 +7,28 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "rebuild": "electron-rebuild -f -w better-sqlite3-multiple-ciphers",
+    "rebuild": "node tools/no-native-compile.js",
     "stage": "node tools/stage-ui.js",
     "archive": "node tools/stage-ui.js && node tools/archive.js",
     "publish-update": "node tools/publish-update.js",
     "test": "node --test test/*.test.js"
   },
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22.12.0"
   },
   "dependencies": {
-    "better-sqlite3-multiple-ciphers": "11.10.0"
+    "better-sqlite3-multiple-ciphers": "13.0.3"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.1",
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8"
+    "electron": "44.10.0",
+    "electron-builder": "26.18.1"
   },
   "build": {
     "appId": "com.stockridge.desktop",
     "productName": "StockRidge",
     "artifactName": "StockRidge-${version}-${os}-${arch}.${ext}",
     "asar": true,
+    "npmRebuild": false,
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**",
       "**/node_modules/better-sqlite3-multiple-ciphers/**"
