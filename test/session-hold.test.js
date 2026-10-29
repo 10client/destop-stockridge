@@ -51,6 +51,19 @@ test('another device signs this till out only after the shop confirms it twice',
   assert.equal(twice.signOut, true);
 });
 
+test('changing page while the line returns does not sign out', () => {
+  const moved = decideSessionHold({
+    reason: 'SESSION_SUPERSEDED',
+    hasLocalSession: true,
+    shopConfirmed: true,
+    reconnecting: false,
+    confirmedTwice: true,
+    navigated: true,
+  });
+  assert.equal(moved.signOut, false);
+  assert.equal(moved.keep, true);
+});
+
 test('the till script uses the same decision', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', '..', 'stockridge', 'public', 'js', 'session-hold.js'), 'utf8');
   const sandbox = { window: {} };

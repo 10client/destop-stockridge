@@ -324,6 +324,17 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** treating the first answer after the line returns as a dead session brings the logout back. Putting a Turso token on the till is not the follower. Signing out on one `SESSION_SUPERSEDED` before the line has settled breaks one account, one device in the other direction.
 - **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they sell offline, the line returns, and they are still signed in, with the queued sale uploading. Do not open the portable exe. Do not pass `--reset-pin`. Do not put a Turso token on the till.
 
+### 26. Offline sign-in says no till is open, and a page change signs the person out
+
+- **Symptom:** a till was opened online. After logout, offline sign-in, the dashboard said "No till is open". Moving between pages as the line returned signed the person out. Offline should offer only Sell, Sales, Stock, Till, Attendance, and Change owed, with those books on the till.
+- **Routes:** `POST /api/tills/open`, `GET /api/tills`, `GET /api/tills/current`, `GET /api/attendance`, `GET /api/change-owed`. The till does not open Turso.
+- **From:** the open drawer lived only on the shop. The offline dashboard invented an empty drawer. A page request that the shop refused was treated as the end of the session.
+- **To:** opening a till writes that session into this computer's SQL before anyone logs out. The follower copies tills, attendance, and change owed through the shop routes that are already live. Offline navigation is those six screens. A page change, or the line returning during one, keeps the saved session.
+- **Why:** the drawer the person opened is the drawer they must count. A page change is not a sign-out.
+- **Functions:** `copyCounterBooks` in `public/js/sync.js`. `fromMirror` in `public/js/views/dashboard.js`. `decideSessionHold` in `lib/session-hold.js`. `staff_attendance` in `lib/shop-clone.js`.
+- **What breaks if this is altered:** leaving the open till only on the shop brings back the empty drawer. Signing out on a page 401 brings back the logout. Putting a Turso token on the till is not the copy.
+- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until they open a till, sign out, sign in offline, and still see that drawer, and a page change as the line returns leaves them signed in. Do not open the portable exe. Do not pass `--reset-pin`.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.
