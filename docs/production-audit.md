@@ -365,6 +365,16 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** leaving a vertical's rows only on the shop brings back an empty hire book, an empty fleet, and a warranty list that says it lives on the server. Putting a Turso token on the till is not the copy.
 - **Outcome:** **Not confirmed.** Not deployed. Do not delete `stockridge.db`. Do not pass `--reset-pin`.
 
+### 30. The catch-up read the whole shop every few minutes
+
+- **Symptom:** coming back online, and the quiet 3-minute pass, asked the shop for whole books and wrote those rows again even when nothing had changed.
+- **From:** sales started at 2020 on every pass and then opened up to 120 receipts. Hire, fleet, warranty, and the other vertical books were listed on every pass, and each parent was opened again. The shelf was pulled in full every pass. The till wrote the row even when `updated_at` was the one it already held.
+- **To:** the first copy is still the full book. Later copies follow a watermark. A child is opened only when that parent changed. The shelf is read in full the first time and about every 15 minutes. A short reconnect uses the cursor. An unchanged stamp is not written. The open page reloads only when a row was stored.
+- **Why:** a till that is already caught up should not keep reading and writing the same books. The line returning is one catch-up, not a reason to copy the shop again on every blip.
+- **Functions:** `copySalesBook`, `copyVerticalBooks`, `copyCounterBooks`, and `pullRequest` in `public/js/sync.js`. `putMany` in `lib/device-store.js`.
+- **What breaks if this is altered:** copying from 2020 on every pass brings the read storm back. Skipping the first copy leaves the offline book empty. Advancing the watermark before the write commits hides rows. Putting Turso on the till is not this cut.
+- **Outcome:** **Not confirmed.** Not deployed. Do not pass `--reset-pin`.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.
