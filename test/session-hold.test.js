@@ -64,6 +64,19 @@ test('changing page while the line returns does not sign out', () => {
   assert.equal(moved.keep, true);
 });
 
+test('uploading queued sales does not sign out', () => {
+  const sending = decideSessionHold({
+    reason: 'SESSION_SUPERSEDED',
+    hasLocalSession: true,
+    shopConfirmed: true,
+    reconnecting: false,
+    confirmedTwice: true,
+    uploading: true,
+  });
+  assert.equal(sending.signOut, false);
+  assert.equal(sending.keep, true);
+});
+
 test('the till script uses the same decision', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', '..', 'stockridge', 'public', 'js', 'session-hold.js'), 'utf8');
   const sandbox = { window: {} };

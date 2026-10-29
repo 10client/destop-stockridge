@@ -33,6 +33,7 @@ test('Saved means the catalogue and the sales book are on the till', () => {
 
 test('a running save, a refused sale, and an empty till are not finished', () => {
   assert.equal(decideSaveStatus({ running: true, lastPullAt: 'x', stockRows: 1 }).state, 'saving');
+  assert.equal(decideSaveStatus({ running: true, pending: 2, online: true, lastPullAt: 'x', stockRows: 1 }).label, 'Sending…');
   assert.equal(decideSaveStatus({ failed: 1, lastPullAt: 'x', stockRows: 1 }).finished, false);
   assert.equal(decideSaveStatus({ pending: 2, online: false, lastPullAt: 'x', stockRows: 1 }).label, 'Saved here');
   assert.equal(decideSaveStatus({ pending: 0, lastPullAt: null, stockRows: 0, productRows: 0 }).label, 'Not saved');

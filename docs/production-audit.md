@@ -345,6 +345,16 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** naming a new column without adding it to the existing file brings the same SQLite error back, and the chip says Part saved again.
 - **Outcome:** **Not confirmed.** Not deployed. Do not delete `stockridge.db`. Do not pass `--reset-pin`.
 
+### 28. Sending queued sales signs the till out
+
+- **Symptom:** the line returned, queued sales showed Sending, then the till signed the person out. Before they signed in again the chip went Saving, then Saved.
+- **From:** the upload, and the page reload after it, were read as the session ending. The hold lasted twenty seconds. The upload can take longer.
+- **To:** while queued sales are uploading, and for a short time after that cycle reloads the open page, the saved session stays. The page reloads when the cycle finishes so the screen shows the figures just saved.
+- **Why:** a sale saved on this till is not a reason to sign the person out. The screen they are looking at has to show the count after the upload.
+- **Functions:** `decideSessionHold` in `lib/session-hold.js`. `resumeAfterLine` in `public/js/sync.js`. `refreshOpenPage` in `public/js/app.js`.
+- **What breaks if this is altered:** treating the upload's refusal as a sign-out brings the logout back. Skipping the reload leaves yesterday's count on screen.
+- **Outcome:** **Not confirmed.** Not deployed. Do not pass `--reset-pin`.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.
