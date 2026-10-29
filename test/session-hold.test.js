@@ -64,6 +64,20 @@ test('changing page while the line returns does not sign out', () => {
   assert.equal(moved.keep, true);
 });
 
+test('sales still waiting on this till are not a sign-out', () => {
+  const waiting = decideSessionHold({
+    reason: 'SESSION_REVOKED',
+    hasLocalSession: true,
+    shopConfirmed: true,
+    reconnecting: false,
+    uploading: false,
+    confirmedTwice: true,
+    pendingUpload: true,
+  });
+  assert.equal(waiting.signOut, false);
+  assert.equal(waiting.keep, true);
+});
+
 test('uploading queued sales does not sign out', () => {
   const sending = decideSessionHold({
     reason: 'SESSION_SUPERSEDED',

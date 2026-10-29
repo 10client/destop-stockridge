@@ -348,12 +348,12 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 ### 28. Sending queued sales signs the till out
 
 - **Symptom:** the line returned, queued sales showed Sending, then the till signed the person out. Before they signed in again the chip went Saving, then Saved.
-- **From:** the upload, and the page reload after it, were read as the session ending. The hold lasted twenty seconds. The upload can take longer.
-- **To:** while queued sales are uploading, and for a short time after that cycle reloads the open page, the saved session stays. The page reloads when the cycle finishes so the screen shows the figures just saved.
+- **From:** the upload, and the page reload after it, were read as the session ending. The hold lasted twenty seconds and was cleared when the cycle ended, even if the sale was still waiting. A second confirmation then signed the till out. After a new sign-in the same queue uploaded, so the chip moved Sending, then Saving, then Saved.
+- **To:** one cycle pushes the outbox first. A refusal of that upload does not open the rest of the shop and does not sign the till out. Sales still waiting on this till block the sign-out, including a second confirmation. The hold stays until those sales have uploaded. The page reloads only when a row was stored and the person is still signed in. A real same-host refusal after the queue is empty still signs out.
 - **Why:** a sale saved on this till is not a reason to sign the person out. The screen they are looking at has to show the count after the upload.
-- **Functions:** `decideSessionHold` in `lib/session-hold.js`. `resumeAfterLine` in `public/js/sync.js`. `refreshOpenPage` in `public/js/app.js`.
-- **What breaks if this is altered:** treating the upload's refusal as a sign-out brings the logout back. Skipping the reload leaves yesterday's count on screen.
-- **Outcome:** **Not confirmed.** Not deployed. Do not pass `--reset-pin`.
+- **Functions:** `decideSessionHold` in `lib/session-hold.js`. `holdCatchUp` in `public/js/api.js`. `resumeAfterLine` in `public/js/sync.js`. `handleAuthFailure` in `public/js/app.js`.
+- **What breaks if this is altered:** treating the upload's refusal as a sign-out brings the logout back. Clearing the hold while the queue still has sales brings it back too. Skipping the reload leaves yesterday's count on screen.
+- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until an offline sale, then the line returning, stays on the same sign-in and the chip moves Sending, then Saving, then Saved. Do not pass `--reset-pin`.
 
 ### 29. Vertical books were not on the till
 
@@ -373,7 +373,7 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **Why:** a till that is already caught up should not keep reading and writing the same books. The line returning is one catch-up, not a reason to copy the shop again on every blip.
 - **Functions:** `copySalesBook`, `copyVerticalBooks`, `copyCounterBooks`, and `pullRequest` in `public/js/sync.js`. `putMany` in `lib/device-store.js`.
 - **What breaks if this is altered:** copying from 2020 on every pass brings the read storm back. Skipping the first copy leaves the offline book empty. Advancing the watermark before the write commits hides rows. Putting Turso on the till is not this cut.
-- **Outcome:** **Not confirmed.** Not deployed. Do not pass `--reset-pin`.
+- **Outcome:** **Not confirmed.** Not deployed. A refused upload must not start this book copy, and must not sign the till out. Do not pass `--reset-pin`.
 
 ## What each screen reads
 

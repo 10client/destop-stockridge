@@ -58,7 +58,7 @@ The till is one computer, one account, one device. The PIN is not stored. The sh
 
 28. An older till file does not grow columns by itself. `CREATE TABLE IF NOT EXISTS` leaves `till_sessions` without `cash_sales_total`. Add the missing column before the write. That SQL error is not a short catalogue and must not stay on the chip as Part saved. Do not delete the till file to get the new column.
 
-29. Uploading queued sales when the line returns is not a sign-out. Sending, then Saving, then Saved, must happen while the person stays on the till. After that cycle, reload the open page so the figures on screen are the ones just saved. Do not clear the token because the upload or the reload was refused once.
+29. Uploading queued sales when the line returns is not a sign-out. Sending, then Saving, then Saved, must happen while the person stays on the till. A sale still waiting on this till blocks the sign-out, including a second confirmation. The hold stays up until those sales have uploaded. After that cycle, reload the open page so the figures on screen are the ones just saved. A real same-host refusal after the queue is empty still signs out. Do not clear the token because the upload or the reload was refused once.
 
 30. Every vertical the account can reach keeps its own books on this till. Electronics keeps warranty and serials. Hire and lease keep agreements. Pharmacy keeps the controlled register and the prescription on the sale. Water packing and bakery keep the vehicles, the duties, and the machines. The full row is stored. A feature that business does not use is not a short catalogue. Turso stays behind the Worker. Do not delete the till file to add a table.
 
