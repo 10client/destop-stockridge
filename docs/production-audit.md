@@ -355,6 +355,16 @@ On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Wind
 - **What breaks if this is altered:** treating the upload's refusal as a sign-out brings the logout back. Skipping the reload leaves yesterday's count on screen.
 - **Outcome:** **Not confirmed.** Not deployed. Do not pass `--reset-pin`.
 
+### 29. Vertical books were not on the till
+
+- **Symptom:** an electronics, hire, pharmacy, water-packing, or bakery business could sign in offline and not find the books that vertical uses.
+- **From:** the till SQL held the retail catalogue and the sales book. Warranty, agreements, vehicles, machines, the controlled register, and the prescription on a sale were only on the shop.
+- **To:** those tables are created on the existing till file. The copy uses the shop routes that are already live and stores the full row. A feature that business does not use does not mark the catalogue Part saved.
+- **Why:** each vertical's books are the thing the person has to count and sell from when the line is down.
+- **Functions:** `copyVerticalBooks` in `public/js/sync.js`. The table list in `lib/shop-clone.js`.
+- **What breaks if this is altered:** leaving a vertical's rows only on the shop brings back an empty hire book, an empty fleet, and a warranty list that says it lives on the server. Putting a Turso token on the till is not the copy.
+- **Outcome:** **Not confirmed.** Not deployed. Do not delete `stockridge.db`. Do not pass `--reset-pin`.
+
 ## What each screen reads
 
 The chip, the bar, and the login line are not separate checks. They all read `SR.api.isOnline()` in `updateNetChrome`.
