@@ -95,11 +95,39 @@
     return true;
   }
 
+  function forceLoginDoor() {
+    if (document.body) document.body.classList.add('is-signed-out');
+    const login = document.getElementById('login-screen');
+    const shell = document.getElementById('shell');
+    if (login) {
+      login.hidden = false;
+      login.style.setProperty('display', 'grid', 'important');
+    }
+    if (shell) {
+      shell.hidden = true;
+      shell.style.setProperty('display', 'none', 'important');
+    }
+    const pin = document.getElementById('sr-native-pin');
+    if (pin && pin.remove) pin.remove();
+  }
+
   function leaveLoginIfEntered() {
     const root = document.getElementById('toasts');
     const login = document.getElementById('login-screen');
     const shell = document.getElementById('shell');
     const user = global.SR && global.SR.state && global.SR.state.user;
+    // A Welcome toast from the last sign-in must not put the shell back over
+    // Sign out. No user and a visible shell is the empty-nav screen.
+    if (global.SR && global.SR._explicitSignOut) {
+      forceLoginDoor();
+      return;
+    }
+    const shellUp = shell && !shell.hidden && shell.style.display !== 'none';
+    if (!user && shellUp) {
+      forceLoginDoor();
+      if (global.SR && global.SR.app && global.SR.app.showLogin) global.SR.app.showLogin();
+      return;
+    }
     if (!user || !login || !root) return;
     const text = String(root.textContent || '');
     if (!/Welcome,|Welcome\.|Signed in offline|Opened the stock saved/.test(text)) return;
@@ -822,7 +850,10 @@
     }
     if (SR.state && SR.state.on) {
       SR.state.on('loaded', () => { paint(); });
-      SR.state.on('cleared', () => { paint(); });
+      SR.state.on('cleared', () => {
+        paint();
+        forceLoginDoor();
+      });
     }
     if (!history.pushState.saveStatusWrapped) {
       const push = history.pushState.bind(history);

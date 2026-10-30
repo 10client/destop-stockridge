@@ -48,6 +48,7 @@
   var kickedAt = 0;
   function sendWaiting() {
     var SR = window.SR;
+    if (SR && SR._explicitSignOut) return;
     if (!SR || !SR.sync || !SR.api || !SR.store || !SR.store.outboxCount) return;
     var now = Date.now();
     if (now - kickedAt < 15000) return;
@@ -69,6 +70,7 @@
   }
 
   function askPin() {
+    if (window.SR && window.SR._explicitSignOut) return;
     if (document.getElementById('sr-native-pin')) return;
     var SR = window.SR;
     var user = SR && SR.state && SR.state.user;
@@ -123,12 +125,33 @@
 
   window.stockridgeNative = window.stockridgeNative || {};
   if (!window.stockridgeNative.shell) window.stockridgeNative.shell = 'android';
-  function paint() { hideInstall(); hideSwitch(); }
+  function keepLoginDoor() {
+    var SR = window.SR;
+    var signedOut = Boolean(SR && SR._explicitSignOut);
+    var user = SR && SR.state && SR.state.user;
+    var shell = document.getElementById('shell');
+    var login = document.getElementById('login-screen');
+    var shellUp = shell && !shell.hidden && shell.style.display !== 'none';
+    if (!signedOut && (user || !shellUp)) return;
+    if (document.body) document.body.classList.add('is-signed-out');
+    if (shell) {
+      shell.hidden = true;
+      shell.style.setProperty('display', 'none', 'important');
+    }
+    if (login) {
+      login.hidden = false;
+      login.style.setProperty('display', 'grid', 'important');
+    }
+    var pin = document.getElementById('sr-native-pin');
+    if (pin && pin.parentNode) pin.parentNode.removeChild(pin);
+  }
+
+  function paint() { hideInstall(); hideSwitch(); keepLoginDoor(); }
   paint();
   if (document.documentElement && window.MutationObserver && !window.__srInstallStrip) {
     window.__srInstallStrip = new MutationObserver(paint);
     window.__srInstallStrip.observe(document.documentElement, { childList: true, subtree: true });
   }
   window.addEventListener('online', function () { setTimeout(sendWaiting, 1600); });
-  setInterval(function () { hideSwitch(); sendWaiting(); }, 20000);
+  setInterval(function () { hideSwitch(); keepLoginDoor(); sendWaiting(); }, 20000);
 })();

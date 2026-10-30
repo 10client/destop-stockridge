@@ -30,4 +30,15 @@ test('the Android app removes the same install buttons the Electron window remov
   assert.match(source, /nav-install/);
   assert.match(source, /login-install/);
   assert.match(source, /shell = 'android'/);
+  assert.match(source, /keepLoginDoor/);
+  assert.match(source, /_explicitSignOut/);
+  assert.match(source, /login-screen/);
+});
+
+test('sign-out cannot leave the shell up over the sign-in page', () => {
+  const desktop = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'desktop-production.js'), 'utf8');
+  assert.match(desktop, /function forceLoginDoor/);
+  assert.match(desktop, /_explicitSignOut/);
+  assert.match(desktop, /forceLoginDoor\(\)/);
+  assert.doesNotMatch(desktop, /location\.reload\(\)/);
 });
