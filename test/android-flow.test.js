@@ -22,7 +22,9 @@ test('the Android build path is the Electron machine path, not a second till', (
   const hide = read('android/app/src/main/assets/hide-install.js');
   const readme = read('android/README.md');
 
-  assert.match(script, /ANDROID_FLOW 1/);
+  assert.match(script, /ANDROID_FLOW 2/);
+  assert.match(script, /sdk install platforms\/android-35 build-tools\/35\.0\.0 platform-tools/);
+  assert.doesNotMatch(script, /sdkmanager\.bat/);
   assert.match(script, /does not delete stockridge\.db/);
   assert.match(script, /does not pass --reset-pin/i);
   assert.match(script, /destop-stockridge/);

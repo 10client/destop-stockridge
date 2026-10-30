@@ -94,3 +94,46 @@ test('a till that signed in before PIN checks existed still opens that saved per
   assert.equal(out.body.offline, true);
   assert.equal(out.body.token, null);
 });
+
+test('a pinned staff member does not receive every business the till copied', () => {
+  const store = {
+    metaGet(key) {
+      if (key !== 'me') return null;
+      return {
+        user: {
+          username: 'ada',
+          role: 'STAFF',
+          branch: { id: 'shop-1', name: 'Ikeja' },
+          business: { id: 'biz-1', name: 'Ikeja Electronics' },
+        },
+        scope: {
+          allBusinesses: false,
+          allBranches: false,
+          businessIds: ['biz-1'],
+          branchIds: ['shop-1'],
+          pinnedBranchId: 'shop-1',
+        },
+        settings: {},
+      };
+    },
+    all(table) {
+      if (table === 'businesses') {
+        return [
+          { id: 'biz-1', name: 'Ikeja Electronics' },
+          { id: 'biz-2', name: 'Abuja Pharmacy' },
+        ];
+      }
+      if (table === 'branches') {
+        return [
+          { id: 'shop-1', business_id: 'biz-1', name: 'Ikeja' },
+          { id: 'shop-2', business_id: 'biz-2', name: 'Abuja' },
+        ];
+      }
+      return [];
+    },
+  };
+  const out = answerWhenShopDown(store, { method: 'GET', pathname: '/api/auth/me' });
+  assert.equal(out.status, 200);
+  assert.deepEqual(out.body.businesses.map((row) => row.id), ['biz-1']);
+  assert.deepEqual(out.body.branches.map((row) => row.id), ['shop-1']);
+});

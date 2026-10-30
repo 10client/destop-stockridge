@@ -228,7 +228,7 @@ def cover_flowables(width):
     steps = [
         ('1  Confirm', 'Same destop folder. Pull. The script must exist. Node stays at 22.12 or newer.'),
         ('2  Add the tools', 'JDK 17 and Android SDK Platform 35. Do not install them inside the destop folder.'),
-        ('3  Build', 'Run the Android script. It must print ANDROID_FLOW 1. It does not open the till file.'),
+        ('3  Build', 'Run the Android script. It must print ANDROID_FLOW 2. It does not open the till file.'),
         ('4  One phone', 'Install the debug APK on one device. Close the unpacked exe before a shop sign-in, or the phone takes the account.'),
     ]
     for title, text in steps:
@@ -380,34 +380,34 @@ def build(path):
     story.append(Spacer(1, 4))
     small('That is the hash read from the page on 29 October 2026. If the file name changed, use the hash printed beside the new name. If the hash does not match, do not run the file.')
     body('Run the installer. Include the Android SDK and Android Virtual Device. First launch: Standard. Let it put the SDK in %LOCALAPPDATA%\\Android\\Sdk. Do not point the SDK at the destop folder.')
-    body('Then Tools, SDK Manager. On the SDK Platforms tab, tick Android 15.0 (API 35). On the SDK Tools tab, tick Android SDK Build-Tools 35, Android SDK Platform-Tools, and Android SDK Command-line Tools. Apply, and accept the licenses.')
+    body('Then Tools, SDK Manager. On the SDK Platforms tab, tick Android 15.0 (API 35). On the SDK Tools tab, tick Android SDK Build-Tools 35 and Android SDK Platform-Tools. Apply, and accept the licenses. Do not install packages with sdkmanager. That tool is deprecated.')
     body('Studio’s own JDK is enough. You do not have to install a second Java. The script looks in C:\\Program Files\\Android\\Android Studio\\jbr first when JAVA_HOME is missing or too old.')
     h2('Command-line path, if you will not use an emulator')
-    body('A real phone does not need Android Studio. You still need JDK 17 and the SDK. Install Temurin 17 from https://adoptium.net/temurin/releases/?version=17 and check the checksum published on that page next to the file. Do not let that installer become your Node.')
-    body('The command-line tools package on the same Android Studio page, read on 29 October 2026, was commandlinetools-win-15859902_latest.zip. Check it the same way. If the name on the page has changed, stop and use that name and its printed hash.')
+    body('A real phone does not need Android Studio. You still need JDK 17 and the SDK packages. Install Temurin 17 from https://adoptium.net/temurin/releases/?version=17 and check the checksum published on that page next to the file. Do not let that installer become your Node.')
+    body('sdkmanager is deprecated. Google’s replacement is Android CLI. It is a separate download. It is not inside the old command-line tools zip. Install it only from the Google command below. The download page does not publish a SHA-256 for android.exe. Do not take the file from another site, and do not invent a hash.')
     story.append(cmd([
-        '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a',
-    ], width))
-    story.append(Spacer(1, 4))
-    story.append(cmd([
-        '$sdk = "$env:LOCALAPPDATA\\Android\\Sdk"',
-        'New-Item -ItemType Directory -Force -Path "$sdk\\cmdline-tools" | Out-Null',
-        'Expand-Archive .\\commandlinetools-win-15859902_latest.zip -DestinationPath "$sdk\\cmdline-tools"',
-        'Rename-Item "$sdk\\cmdline-tools\\cmdline-tools" "$sdk\\cmdline-tools\\latest"',
+        '$cli = "https://dl.google.com/android/cli/latest/" +',
+        '  "windows_x86_64/install.cmd"',
+        'curl.exe -fsSL $cli -o "$env:TEMP\\i.cmd"',
+        '& "$env:TEMP\\i.cmd"',
     ], width))
     story.append(Spacer(1, 6))
-    body('The zip extracts a folder named cmdline-tools. It must end up as cmdline-tools\\latest\\bin\\sdkmanager.bat. If you unzip twice, you get cmdline-tools\\cmdline-tools and sdkmanager will not be found. Fix the folders. Do not delete the till file because the zip layout was wrong.')
+    body('That is the local install, for this Windows user. It does not need an administrator. If android is not recognised, close the window, open a new one, and continue. Do not go back to sdkmanager.')
     story.append(cmd([
         '$env:JAVA_HOME = "C:\\Program Files\\Eclipse Adoptium\\jdk-17"',
         '$env:Path = "$env:JAVA_HOME\\bin;" + $env:Path',
         'java -version',
-        '$sm = "$sdk\\cmdline-tools\\latest\\bin\\sdkmanager.bat"',
-        '& $sm --sdk_root=$sdk --licenses',
-        '& $sm --sdk_root=$sdk "platforms;android-35"',
-        '& $sm --sdk_root=$sdk "build-tools;35.0.0" "platform-tools"',
+        '$env:ANDROID_HOME = "$env:LOCALAPPDATA\\Android\\Sdk"',
+        '$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME',
+        'android --sdk="$env:ANDROID_HOME" sdk install platforms/android-35',
+        'android --sdk="$env:ANDROID_HOME" sdk install build-tools/35.0.0',
+        'android --sdk="$env:ANDROID_HOME" sdk install platform-tools',
+        'Test-Path "$env:ANDROID_HOME\\platforms\\android-35"',
+        'Test-Path "$env:ANDROID_HOME\\build-tools\\35.0.0"',
+        'Test-Path "$env:ANDROID_HOME\\platform-tools\\adb.exe"',
     ], width))
     story.append(Spacer(1, 6))
-    small('Replace the Temurin path with the folder the installer actually created. java -version must say 17 or newer. At the license prompts, type y. This is the Android SDK license, not a shop signing key.')
+    small('Replace the Temurin path with the folder the installer actually created. java -version must say 17 or newer. The three Test-Path lines must print True. Package names use slashes. There is no --licenses flag. This is not a shop signing key, and it does not touch the till file.')
 
     h1('5. Build the debug APK')
     body('Open a new PowerShell in the destop folder. The execution-policy change lasts for that window only. It does not change the computer’s policy.')
@@ -416,7 +416,7 @@ def build(path):
         '.\\tools\\android-from-electron.ps1',
     ], width))
     story.append(Spacer(1, 6))
-    body('The first lines must include ANDROID_FLOW 1, the Node version, a Java of 17 or newer, and the SDK path. The script then writes android\\local.properties on this computer only. That file is not committed. The first Gradle run downloads Gradle 8.9. It needs the internet. It can take several minutes. Do not cancel it, and do not start a second copy beside it.')
+    body('The first lines must include ANDROID_FLOW 2, the Node version, a Java of 17 or newer, and the SDK path. The script then writes android\\local.properties on this computer only. That file is not committed. The first Gradle run downloads Gradle 8.9. It needs the internet. It can take several minutes. Do not cancel it, and do not start a second copy beside it.')
     body('When it finishes, it prints the APK path:')
     story.append(cmd([
         'android\\app\\build\\outputs\\apk\\debug\\app-debug.apk',
@@ -543,7 +543,7 @@ def build(path):
     h2('Tick this before you call the phone done')
     checks = [
         'node -v is still v22.12 or newer.',
-        'The script printed ANDROID_FLOW 1, and it printed that stockridge.db was not opened.',
+        'The script printed ANDROID_FLOW 2, and it printed that stockridge.db was not opened.',
         'app-debug.apk exists. It was not committed.',
         'Exactly one phone or emulator was installed to.',
         'The phone shows StockRidge with no Install button and no Download button.',

@@ -1,6 +1,8 @@
 # StockRidge Android, from the machine that already builds the unpacked exe.
-# ANDROID_FLOW 1
+# ANDROID_FLOW 2
 # Requires: Windows PowerShell 5.1 or PowerShell 7, JDK 17, Android SDK 35.
+# Missing SDK packages are installed with Android CLI (`android sdk install`).
+# sdkmanager is deprecated. This script does not call it.
 # Does not deploy. Does not delete stockridge.db. Does not pass --reset-pin.
 # Does not compile the ciphered SQL library. Does not open Turso.
 
@@ -33,7 +35,7 @@ function Add-Candidate([System.Collections.Generic.List[string]]$List, [string]$
     }
 }
 
-Write-Host 'ANDROID_FLOW 1'
+Write-Host 'ANDROID_FLOW 2'
 Write-Host 'This builds a debug APK. It does not deploy. It does not delete stockridge.db. It does not pass --reset-pin.'
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -108,13 +110,13 @@ Write-Host "sdk $sdk"
 $platform = Join-Path $sdk 'platforms\android-35'
 $buildTools = Join-Path $sdk 'build-tools\35.0.0'
 if (-not (Test-Path -LiteralPath $platform) -or -not (Test-Path -LiteralPath $buildTools)) {
-    $sdkmanager = Join-Path $sdk 'cmdline-tools\latest\bin\sdkmanager.bat'
-    if (-not (Test-Path -LiteralPath $sdkmanager)) {
-        Fail 'API 35 platform or Build-Tools 35.0.0 is missing, and sdkmanager was not found. In Android Studio open SDK Manager and install Android SDK Platform 35, Build-Tools 35.0.0, and Platform-Tools. The till file was not touched.'
+    $androidCmd = Get-Command android -ErrorAction SilentlyContinue
+    if (-not $androidCmd) {
+        Fail 'API 35 platform or Build-Tools 35.0.0 is missing. sdkmanager is deprecated. Install Android CLI from https://developer.android.com/tools/agents/android-cli/download then run: android sdk install platforms/android-35 build-tools/35.0.0 platform-tools. The till file was not touched.'
     }
-    Write-Host 'Installing Android SDK Platform 35 and Build-Tools 35.0.0'
-    & $sdkmanager --sdk_root=$sdk 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
-    if ($LASTEXITCODE -ne 0) { Fail 'sdkmanager failed. Accept the SDK licenses in Android Studio, then run this script again. The till file was not touched.' }
+    Write-Host 'Installing Android SDK Platform 35 and Build-Tools 35.0.0 with Android CLI'
+    & $androidCmd.Source --sdk=$sdk sdk install platforms/android-35 build-tools/35.0.0 platform-tools
+    if ($LASTEXITCODE -ne 0) { Fail 'android sdk install failed. Do not use sdkmanager. The till file was not touched.' }
 }
 if (-not (Test-Path -LiteralPath $platform) -or -not (Test-Path -LiteralPath $buildTools)) {
     Fail 'API 35 platform or Build-Tools 35.0.0 is still missing. The till file was not touched.'
