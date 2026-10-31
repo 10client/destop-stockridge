@@ -44,13 +44,13 @@ The code change starts only after this check is written.
 - **app.js:** the net, save, and queue listeners bind once, before the first cycle, on `SR._syncChromeBound`. `startSync()` calls `SR.sync.start()` and catches a throw so a later start failure cannot stop the shop screen. Offline sign-in, connected sign-in, and boot use `startSync()`.
 - **app.css:** under 620px the net word stays hidden, except Syncing. Saving is the save chip, not that word.
 - **Android:** `MainActivity` keeps the last shop page in the app cache as `shell.html`, and the last `/js`, `/css`, `/icons`, `/brand`, and `/sw.js`. A network miss, or no radio, serves that copy. An HTTP status of 400 or more is a server answer, not a miss, and the WebView loads it. The page is stored only when it contains `id="boot"`. It does not cache `/api/`. It does not open `stockridge.db` or Turso. `ACCESS_NETWORK_STATE` is how a dead radio is known without waiting on a socket.
-- **Not this change:** no stamp, no commit, no push, no deploy. Stockridge tip is still `59c40e0`. Destop tip is still `b201438`. Both live hosts still serve `ridge-20261030-0910-7f185a1`. That stamp does not contain `waitTimer`. Do not treat a pull of those tips as this fix.
-- **Electron gets the script** only after the sibling `stockridge` pull and `node .\tools\stage-ui.js`, then the unpacked dir build. The phone loads that same script from the Worker. An APK rebuild does not ship `public/js`. The APK rebuild is what ships the shell cache. A deploy was not asked for and was not done.
-- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until the new unpacked `dist\win-unpacked\StockRidge.exe` and the new phone app are the ones they open, the chips say Syncing and Saving, and a killed app sells from the stock already on that device while the line is down. Do not open the portable exe. Do not pass `--reset-pin`. Do not delete `stockridge.db`.
+- **Pushed and deployed.** They asked to push and deploy so the desktop and the phone can be built and tested. Stockridge `c0b3a8c` declares `waitTimer`. Destop `a68e82a` keeps the last shop page on the phone. The deploy stamp is `ridge-20261031-0853-c0b3a8c`. Sample `https://sample.stockridge.workers.dev` version `c9cd1394-2ec9-4d68-ba08-f1614dd060d1`. Office `https://stockridge.stockridge.workers.dev` version `73188bb0-4d66-4fcf-89f1-3ec6990961f5`. Both serve `let waitTimer = null`. Staging was not deployed. `--reset-pin` was not passed. The administrator PIN was not changed. The Turso data copy was not run. `0` migrations applied, `23` already recorded. Seven businesses still trading.
+- **Electron gets the script** from the sibling `stockridge` pull and `node .\tools\stage-ui.js`, then the unpacked dir build. The phone gets that script from the Worker, which now has it. The APK rebuild is what ships the shell cache. An APK rebuild still does not ship `public/js` by itself.
+- **Outcome:** **Not confirmed.** Deployed. Not marked Success until the new unpacked `dist\win-unpacked\StockRidge.exe` and the new phone app are the ones they open, the chips say Syncing and Saving, and a killed app sells from the stock already on that device while the line is down. Do not open the portable exe. Do not pass `--reset-pin`. Do not delete `stockridge.db`.
 
 ### Build for this change
 
-Do not run this against GitHub until this change is the commit they pull. It is not that commit yet. Do not pull `C:\Users\Mohammed Hayatudeen\stockridge`. Do not pass `--reset-pin`. Do not deploy unless asked. Do not open the portable exe.
+Pull stockridge `f78ea0a` and the destop commit that contains this file. The script is `c0b3a8c`. The phone cache is `a68e82a`. Do not pull `C:\Users\Mohammed Hayatudeen\stockridge`. Do not pass `--reset-pin`. Do not deploy again for this change. Do not open the portable exe.
 
 Windows till, from PowerShell, after that commit exists:
 
@@ -74,7 +74,7 @@ git pull
 .\tools\android-from-electron.ps1
 ```
 
-The APK is `android\app\build\outputs\apk\debug\app-debug.apk`. Open the app once while the Worker answers, so the shell can be stored. After that, a killed app can open that page with the line down. The script on that page is still the Worker copy until a deploy. Do not deploy unless asked.
+The APK is `android\app\build\outputs\apk\debug\app-debug.apk`. Open the app once while the Worker answers, so the shell can be stored. After that, a killed app can open that page with the line down. The script on that page is the Worker copy, stamp `ridge-20261031-0853-c0b3a8c`. Do not deploy again for this change.
 
 ## Standing rules
 
@@ -487,13 +487,13 @@ The chip, the bar, and the login line are not separate checks. They all read `SR
 - **To:** `waitTimer` is declared. The cycle emits `change` after `running` is assigned. Listeners are bound before that cycle. A start throw cannot block the shop screen. The phone keeps the last shop page and the shell assets, and serves them on a network miss. It does not cache `/api/`. It does not open `stockridge.db`.
 - **Why:** both clients load the same script. The Windows till gets it from `stage-ui.js`. The phone gets the script from the Worker and the page from the APK cache. One of those without the other leaves one client broken.
 - **Functions:** `start` and `runOnce` in `public/js/sync.js`. `startSync` in `public/js/app.js`. `shouldInterceptRequest` in `MainActivity.java`.
-- **What breaks if this is altered:** emitting `change` before `running` is assigned paints a blank chip. Returning null on a network miss is a blank phone. Caching `/api/` would show a stale sale total. Deploying was not part of this edit.
-- **Outcome:** **Not confirmed.** Not deployed. Not on GitHub. Tips remain destop `b201438` and stockridge `59c40e0`. Live stamp remains `ridge-20261030-0910-7f185a1`. Do not mark Success until the new unpacked exe and the new phone app are the ones they open. Do not open the portable exe. Do not pass `--reset-pin`. Do not delete the till database.
+- **What breaks if this is altered:** emitting `change` before `running` is assigned paints a blank chip. Returning null on a network miss is a blank phone. Caching `/api/` would show a stale sale total.
+- **Outcome:** **Not confirmed.** Deployed. Stockridge `c0b3a8c`. Destop `a68e82a`. Stamp `ridge-20261031-0853-c0b3a8c`. Sample version `c9cd1394-2ec9-4d68-ba08-f1614dd060d1`. Office version `73188bb0-4d66-4fcf-89f1-3ec6990961f5`. Not marked Success until the new unpacked exe and the new phone app are the ones they open. Do not open the portable exe. Do not pass `--reset-pin`. Do not delete the till database.
 
 ## Not production-ready
 
 - The exe they open may still be an older unpacked build, or the locked portable file from 20 Oct 2026 4:37:44 PM. Length of that old file was 77304820.
-- The live hosts still serve `ridge-20261030-0910-7f185a1` from the sign-out deploy. That stamp does not contain the `waitTimer` declaration. A browser refresh does not pick this edit up. The Windows till does not either, until this change is the commit they pull and they open the new unpacked `StockRidge.exe`. A file shipped in that exe wins over the PWA. Do not open the locked portable exe. Do not pass `--reset-pin`. Do not treat the 2026-10-27 purchase-order stamps as the live hosts.
+- The live hosts serve `ridge-20261031-0853-c0b3a8c`. A browser refresh picks that up. The Windows till does not, until they pull this change and open the new unpacked `StockRidge.exe`. A file shipped in that exe wins over the PWA. Do not open the locked portable exe. Do not pass `--reset-pin`. Do not treat `ridge-20261030-0910-7f185a1` or the 2026-10-27 purchase-order stamps as the live hosts.
 - The exe is unsigned. Leave `signAndEditExecutable` false until `CSC_LINK` exists.
 - Offline sign-in only works for a username the shop has already accepted on this till. That is intentional.
 - One account, one device will keep signing the other session out after the 12 second sign-in window. That is the product rule.
