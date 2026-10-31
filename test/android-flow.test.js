@@ -53,6 +53,9 @@ test('the Android build path is the Electron machine path, not a second till', (
   assert.match(strings, /https:\/\/sample\.stockridge\.workers\.dev/);
   assert.doesNotMatch(strings, /ghp_|eyJ/);
   assert.match(activity, /does not open stockridge\.db/);
+  assert.match(activity, /does not cache\s*\/api\//);
+  assert.match(activity, /shell\.html/);
+  assert.match(manifest, /ACCESS_NETWORK_STATE/);
   assert.match(hide, /shell = 'android'/);
   assert.match(readme, /does not open Turso/);
   assert.match(readme, /android-from-the-electron-machine\.pdf/);

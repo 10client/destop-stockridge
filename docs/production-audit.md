@@ -1,23 +1,80 @@
-# StockRidge development memory
+# StockRidge production audit
 
-Written 2026-10-21. This is the guide for the next change. Read the matching row before touching sign-in, the shop proxy, the online flag, or the screen cache. Do not repeat a change whose outcome is already known.
+This file is the first stepping stone. Read it before a change. Write the check here before editing code. After the change, write the outcome and the Electron and Android build here. Do not start from a symptom in chat and skip this file.
 
-Outcome words used below:
+Written 2026-10-21. Rearranged 2026-10-31 so the check comes before the record.
+
+Outcome words:
 
 - **Success** — the reported symptom stopped, and the till that was opened was the build that contained the change.
 - **Partial** — the code does the intended thing on that one path. A later symptom showed the till was still wrong, or the opened program was not confirmed.
-- **Not confirmed** — pushed, not proven on the Windows till they open.
+- **Not confirmed** — pushed, not proven on the Windows till or the phone they open.
 - **Failed** — the symptom was still there after the change.
 - **Worse** — the change removed one symptom and created another.
 
-On 2026-10-27 they asked again, so both PWAs were deployed and the unpacked Windows till was built. Sample stamp `ridge-20261027-1243-2ab07aa`. Office stamp `ridge-20261027-1244-2ab07aa`. Stockridge `2ab07aa`. Destop `797743a`. The PIN was not changed. Do not tell anyone a row is Success until they open the new unpacked `StockRidge.exe` and the symptom is gone. Do not open the portable exe.
-## How to use this file
+Do not mark a row Success until they open the new unpacked `dist\win-unpacked\StockRidge.exe`, or the new phone app, and the symptom is gone. Do not open the portable exe.
 
-1. Find the symptom in the record. Read **From**, **To**, and **Do not**.
-2. If the outcome is Failed or Worse, do not patch the sentence. Find the route that still writes the wrong state.
-3. A shop answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence, an HTML block, or `"offline": true`.
-4. One account, one device still stands. The PIN is not stored. The window never calls `https://*.stockridge.workers.dev` itself.
-5. Build only `--win dir`. Open `dist\win-unpacked\StockRidge.exe`. Do not open `dist\StockRidge-0.1.0-win-x64.exe`.
+## First stepping stone
+
+Do these in order. Do not skip to a patch.
+
+1. Write the symptom in the words they used. Name both clients if both are broken.
+2. Read the matching row in the record. Read **From**, **To**, and **Do not**.
+3. Open the file the row names. Confirm the line that still writes the wrong state. Do not patch the sentence on the screen.
+4. Write the check below before editing: file, line, what it does, what it must not do.
+5. Change only that path. One account, one device. The PIN is not stored. Do not pass `--reset-pin`. Do not delete `stockridge.db`. Do not pull `C:\Users\Mohammed Hayatudeen\stockridge`.
+6. After the change, write the outcome in the same section, then the Electron and Android build. A phone rebuild does not carry `public/js`. The phone loads the Worker. An Electron rebuild does not either, until `node .\tools\stage-ui.js` copies the sibling `stockridge\public`.
+
+A shop answer is the only online signal. A status from 1 to 499 is an answer, including 401 and 404, unless the body is the proxy-miss sentence, an HTML block, or `"offline": true`. The window never calls `https://*.stockridge.workers.dev` itself. Build only `--win dir`.
+
+### Check before the change — 2026-10-31
+
+- **Symptom, in their words:** `waitTimer is not defined`. Sync does not show Syncing and Saving. Offline does not work on the Electron build or the Android build.
+- **Read first:** rows 11, 12, 25, and 28. Those already say a cycle must leave **Saving…**, a sale must stay on the till, and the line returning must not sign them out. None of those rows declare `waitTimer`.
+- **File:** `stockridge/public/js/sync.js`. The script is strict. `timer` and `debounceTimer` are declared. `waitTimer` is not.
+- **What the line does:** `start()` calls `stop()` first. `stop()` reads `waitTimer`. In strict mode that read throws `ReferenceError: waitTimer is not defined` before the interval, the online listener, or the queue listener is set. `doLogin`, offline continue, and boot all call `start()`. The throw is the screen they see, and it is why no cycle paints **Syncing** or **Saving…**.
+- **Same file on both clients:** Electron copies this file with `stage-ui.js`. The phone loads it from the Worker. An APK rebuild alone does not replace it.
+- **Must not:** delete the outbox, store the PIN, pass `--reset-pin`, delete the till file, or treat a missing timer as a sign-out.
+
+The code change starts only after this check is written.
+
+### Outcome — 2026-10-31
+
+- **sync.js:** `let waitTimer = null` is declared with `timer` and `debounceTimer`. `start()` still calls `stop()` first. That read no longer throws, so the interval, the line-returning listener, and the queue listener are set. `runOnce` emits `change` only after `running` is assigned. An emit inside the cycle before the first await still saw an empty `running`, so the chips never said Syncing or Saving. That inner emit was not kept.
+- **app.js:** the net, save, and queue listeners bind once, before the first cycle, on `SR._syncChromeBound`. `startSync()` calls `SR.sync.start()` and catches a throw so a later start failure cannot stop the shop screen. Offline sign-in, connected sign-in, and boot use `startSync()`.
+- **app.css:** under 620px the net word stays hidden, except Syncing. Saving is the save chip, not that word.
+- **Android:** `MainActivity` keeps the last shop page in the app cache as `shell.html`, and the last `/js`, `/css`, `/icons`, `/brand`, and `/sw.js`. A network miss, or no radio, serves that copy. An HTTP status of 400 or more is a server answer, not a miss, and the WebView loads it. The page is stored only when it contains `id="boot"`. It does not cache `/api/`. It does not open `stockridge.db` or Turso. `ACCESS_NETWORK_STATE` is how a dead radio is known without waiting on a socket.
+- **Not this change:** no stamp, no commit, no push, no deploy. Stockridge tip is still `59c40e0`. Destop tip is still `b201438`. Both live hosts still serve `ridge-20261030-0910-7f185a1`. That stamp does not contain `waitTimer`. Do not treat a pull of those tips as this fix.
+- **Electron gets the script** only after the sibling `stockridge` pull and `node .\tools\stage-ui.js`, then the unpacked dir build. The phone loads that same script from the Worker. An APK rebuild does not ship `public/js`. The APK rebuild is what ships the shell cache. A deploy was not asked for and was not done.
+- **Outcome:** **Not confirmed.** Not deployed. Not marked Success until the new unpacked `dist\win-unpacked\StockRidge.exe` and the new phone app are the ones they open, the chips say Syncing and Saving, and a killed app sells from the stock already on that device while the line is down. Do not open the portable exe. Do not pass `--reset-pin`. Do not delete `stockridge.db`.
+
+### Build for this change
+
+Do not run this against GitHub until this change is the commit they pull. It is not that commit yet. Do not pull `C:\Users\Mohammed Hayatudeen\stockridge`. Do not pass `--reset-pin`. Do not deploy unless asked. Do not open the portable exe.
+
+Windows till, from PowerShell, after that commit exists:
+
+```
+cd C:\Users\Mohammed Hayatudeen\stockridge\destop-stockridge
+git pull
+cd C:\Users\Mohammed Hayatudeen\stockridge\stockridge
+git pull
+cd C:\Users\Mohammed Hayatudeen\stockridge\destop-stockridge
+node .\tools\stage-ui.js
+node .\node_modules\electron-builder\cli.js --win dir --config.win.signAndEditExecutable=false
+```
+
+Open `dist\win-unpacked\StockRidge.exe` after closing the old window. The machine must be Node.js 22.12 or newer. Do not run `npm run rebuild`. Do not compile the SQL library.
+
+Phone, from the same destop folder, after that commit exists. This does not use the sibling pull or `stage-ui.js`:
+
+```
+cd C:\Users\Mohammed Hayatudeen\stockridge\destop-stockridge
+git pull
+.\tools\android-from-electron.ps1
+```
+
+The APK is `android\app\build\outputs\apk\debug\app-debug.apk`. Open the app once while the Worker answers, so the shell can be stored. After that, a killed app can open that page with the line down. The script on that page is still the Worker copy until a deploy. Do not deploy unless asked.
 
 ## Standing rules
 
@@ -423,10 +480,20 @@ The chip, the bar, and the login line are not separate checks. They all read `SR
 - **What breaks if this is altered:** putting a Turso token in the APK, deleting the till file so the phone can start, or treating the APK as a deploy.
 - **Outcome:** **Not confirmed.** Not deployed. Do not pass `--reset-pin`. Do not delete the till database.
 
+### 33. waitTimer is not defined, and a killed phone has no page
+
+- **Symptom:** `waitTimer is not defined`. Sync does not show Syncing and Saving. Offline does not work on the Electron build or the Android build.
+- **From:** `public/js/sync.js` is strict. `stop()` reads `waitTimer` before it was declared, so `start()` threw and the cycle never started. The chips never received a `change` while `running` was set. On the phone, `shouldInterceptRequest` fetched only the main frame and returned null on a network miss, so a killed app could not open the shell. The service worker never saw that navigation.
+- **To:** `waitTimer` is declared. The cycle emits `change` after `running` is assigned. Listeners are bound before that cycle. A start throw cannot block the shop screen. The phone keeps the last shop page and the shell assets, and serves them on a network miss. It does not cache `/api/`. It does not open `stockridge.db`.
+- **Why:** both clients load the same script. The Windows till gets it from `stage-ui.js`. The phone gets the script from the Worker and the page from the APK cache. One of those without the other leaves one client broken.
+- **Functions:** `start` and `runOnce` in `public/js/sync.js`. `startSync` in `public/js/app.js`. `shouldInterceptRequest` in `MainActivity.java`.
+- **What breaks if this is altered:** emitting `change` before `running` is assigned paints a blank chip. Returning null on a network miss is a blank phone. Caching `/api/` would show a stale sale total. Deploying was not part of this edit.
+- **Outcome:** **Not confirmed.** Not deployed. Not on GitHub. Tips remain destop `b201438` and stockridge `59c40e0`. Live stamp remains `ridge-20261030-0910-7f185a1`. Do not mark Success until the new unpacked exe and the new phone app are the ones they open. Do not open the portable exe. Do not pass `--reset-pin`. Do not delete the till database.
+
 ## Not production-ready
 
 - The exe they open may still be an older unpacked build, or the locked portable file from 20 Oct 2026 4:37:44 PM. Length of that old file was 77304820.
-- The PWA hosts are on the purchase-order stamps: sample `ridge-20261027-1243-2ab07aa`, office `ridge-20261027-1244-2ab07aa`, stockridge `2ab07aa`. A refresh of the browser picks that up. The Windows till does not, until they close the old window and open the unpacked `StockRidge.exe` built on 2026-10-27. A file shipped in that exe wins over the PWA. Do not open the locked portable exe. Do not pass `--reset-pin`.
+- The live hosts still serve `ridge-20261030-0910-7f185a1` from the sign-out deploy. That stamp does not contain the `waitTimer` declaration. A browser refresh does not pick this edit up. The Windows till does not either, until this change is the commit they pull and they open the new unpacked `StockRidge.exe`. A file shipped in that exe wins over the PWA. Do not open the locked portable exe. Do not pass `--reset-pin`. Do not treat the 2026-10-27 purchase-order stamps as the live hosts.
 - The exe is unsigned. Leave `signAndEditExecutable` false until `CSC_LINK` exists.
 - Offline sign-in only works for a username the shop has already accepted on this till. That is intentional.
 - One account, one device will keep signing the other session out after the 12 second sign-in window. That is the product rule.
