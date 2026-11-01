@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>StockRidge Onboarding Guide</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 10.5pt/1.45 "Segoe UI", "Noto Sans", sans-serif; color: #101a20; }
+  h1 { font-size: 22pt; line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.02em; }
+  h2 { font-size: 15pt; margin: 0 0 8px; color: #07290c; }
+  h3 { font-size: 12pt; margin: 14px 0 4px; color: #0d5a22; }
+  p { margin: 0 0 8px; }
+  .cover { min-height: 250mm; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; }
+  .kicker { color: #128a32; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 9pt; }
+  .lede { font-size: 13pt; color: #2c3b45; max-width: 42em; }
+  .rule { height: 4px; width: 72px; background: #149433; margin: 14px 0; }
+  .foot { color: #5a6b77; font-size: 9pt; border-top: 1px solid #dde4e8; padding-top: 8px; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  ol.toc { padding-left: 1.2em; }
+  ol.toc li { margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 9pt; }
+  th, td { border-bottom: 1px solid #dde4e8; text-align: left; padding: 5px 6px; vertical-align: top; }
+  th { background: #eef8f1; color: #07290c; font-weight: 700; }
+  .shot { margin: 8px 0 4px; border: 1px solid #c3ced5; border-radius: 8px; overflow: hidden; }
+  .shot img { width: 100%; display: block; }
+  .cap { font-size: 8.5pt; color: #5a6b77; margin: 0 0 10px; }
+  .note { background: #eef8f1; border-left: 3px solid #149433; padding: 8px 10px; margin: 8px 0 12px; }
+  .warn { background: #fdf0d5; border-left: 3px solid #d69a12; padding: 8px 10px; margin: 8px 0 12px; }
+  ul { margin: 4px 0 10px; padding-left: 1.2em; }
+  li { margin: 2px 0; }
+  .pair { display: grid; grid-template-columns: 1.4fr .8fr; gap: 10px; align-items: start; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 8.5pt; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div>
+    <div class="kicker">StockRidge</div>
+    <h1>Shop, till and phone<br>Onboarding guide</h1>
+    <div class="rule"></div>
+    <p class="lede">For a single shop or many branches. For the owner, a co-owner, a manager and the person at the counter.</p>
+    <p>Start with one owner and one cashier. Add a shop, a second owner, or a general manager without inventing a second account for the same person.</p>
+    <p>StockRidge keeps stock, cash, receipts, people and the books in one record. A sale on the computer, the phone app, or the browser is the same sale once it has reached the shop.</p>
+  </div>
+  <div>
+    <p>Every screen in this guide is a photograph of the running system, not a drawing. The shop in the photographs is a demonstration electronics business, Adewale Electronics, created for this guide. The figures are that demonstration. They are not a customer's live books.</p>
+    <p class="foot">StockRidge — Onboarding guide. Pricing is not in this guide. Confirm any commercial terms in writing before you pay. This file does not set a price.</p>
+  </div>
+</section>
+
+<section class="page">
+  <div class="kicker">Contents</div>
+  <h2>What is in this guide</h2>
+  <ol class="toc">
+    <li>Why StockRidge exists</li>
+    <li>Getting in</li>
+    <li>The three ways you open it — browser, Windows till, phone app</li>
+    <li>Start at your size, and pick the kind of shop</li>
+    <li>The owner, and a co-owner</li>
+    <li>The manager — every shop, or one shop</li>
+    <li>The person at the counter</li>
+    <li>Stock, the till, and the safe</li>
+    <li>Who can do what</li>
+    <li>When the line drops</li>
+    <li>What was tested, and what a screen is for</li>
+    <li>Getting started</li>
+  </ol>
+  <div class="note">A note on money. The screen writes amounts with the naira sign. The thermal receipt writes <strong>N</strong>, not that sign. Many receipt printers and older phones draw a box where the naira sign should be. A receipt that shows a box is worse than a plain letter. The books still hold the same number.</div>
+  <p>There is no pricing chapter. What a deployment costs is agreed outside this guide. The screens that show a subscription are about capacity and switches, not a price list.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">1</div>
+  <h2>Why StockRidge exists</h2>
+  <p>Most shop software is a cash register with reports added later. StockRidge is built around the things that actually lose a Nigerian shop money or time.</p>
+  <table>
+    <tr><th>The leak</th><th>What StockRidge does</th></tr>
+    <tr><td>The counter stops when the network drops</td><td>The Windows till sells from the stock already on that computer. The phone keeps the last shop page and queues the sale. Both send it when the line returns.</td></tr>
+    <tr><td>A sale is marked saved when the shop refused it</td><td>Saved means the shop has the row, or the till has finished writing it and is still holding it to send. A refusal does not say Saved.</td></tr>
+    <tr><td>Two devices share one sign-in and overwrite each other</td><td>One account, one device. Signing in on a second device signs the first one out. The queue of sales stays on the device that made them.</td></tr>
+    <tr><td>No N100 note in the drawer</td><td>Change owed is a claim with a code, not a sweet or a scrap of paper. Any cashier on duty can pay it out later.</td></tr>
+    <tr><td>Rent is paid out of the counter drawer</td><td>The till drawer and the branch safe are different pots. A cashier spends from the safe only up to the limit a manager set.</td></tr>
+    <tr><td>A pharmacy screen is forced onto a furniture shop</td><td>The kind of business turns modules on. A phone shop does not get a dispensary. A water plant does not get a hire book unless that is what it does.</td></tr>
+    <tr><td>The same person is given a second account when they move shop</td><td>Transfer and promote keeps one account and one history. A co-owner is an owner of the businesses you tick, not a fifth role.</td></tr>
+  </table>
+  <p>The full circle is: people and permissions, then supplier and stock, then the till and the sale, then the receipt, then cash, then the report. Nothing has to be copied into a second book for the reports to agree.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">2</div>
+  <h2>Getting in</h2>
+  <div class="shot"><img src="login-1280.png" alt="Sign-in screen"></div>
+  <p class="cap">SCREEN 1. The sign-in page. Username and PIN. There is no email reset link.</p>
+  <p>Everybody signs in with a username and their own PIN. The PIN is not stored on the till. An owner or a manager resets a forgotten PIN from Staff. That reset is recorded.</p>
+  <p>Tick “Keep this till signed in on this device” only on a till that stays in the shop. A shared phone that walks home should not stay signed in.</p>
+  <div class="warn">Before live trade, the owner issues a unique PIN to every real person, checks the role and the shop, and turns off any demonstration account. The photographs in this guide use a demonstration PIN that is not a live PIN. Do not reuse it.</div>
+  <h3>What you see first</h3>
+  <p>The side navigation is grouped by work: Today, Stock, Buying, Customers, People, Money, Business. Your role hides what you are not allowed to open. A module the business does not use is hidden even from the owner — a furniture shop does not show the Greenbook.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">3</div>
+  <h2>The three ways you open it</h2>
+  <p>The screens are the same. The door is not.</p>
+  <table>
+    <tr><th>Door</th><th>What it is</th><th>How a shop call is made</th><th>When the line is down</th></tr>
+    <tr><td>Browser / PWA</td><td>The page at the Worker address. Install is offered.</td><td>The page calls <code>/api/...</code> on that same address.</td><td>After one connected visit, the service worker can open the shell. Shop answers are never cached. A cached sale total would be a lie.</td></tr>
+    <tr><td>Windows till</td><td>The unpacked <code>StockRidge.exe</code>. Not the portable exe.</td><td>The window never calls the Worker itself. The program on that computer forwards <code>/api/...</code> and adds the device id.</td><td>The till file on that computer holds the catalogue and the queue. A sale is written there before the cashier is told it succeeded.</td></tr>
+    <tr><td>Android app</td><td>A window around the same Worker. Install is removed. It does not open the till file and it does not open Turso.</td><td>The same <code>/api/...</code> calls as the browser.</td><td>The last shop page and its scripts are kept on the phone. A killed app can open that page. Shop answers are not stored.</td></tr>
+  </table>
+  <div class="note">An APK rebuild does not replace the scripts. The phone loads those from the Worker. A Windows rebuild does not either, until the shop screens are staged from the sibling stockridge folder. One without the other leaves one client on the old behaviour.</div>
+  <p>The chip beside the shop name says Online, Offline, or Syncing. The save chip says Saving… while a cycle is writing, and Saved only when that write finished honestly. On a narrow phone the word Syncing stays visible. Saving is the other chip.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">4</div>
+  <h2>Start at your size</h2>
+  <p>One stored set of roles. Not five.</p>
+  <table>
+    <tr><th>What you need</th><th>How it is stored</th></tr>
+    <tr><td>Proprietor, every business</td><td>Owner, with no business pinned. A business opened later is already theirs.</td></tr>
+    <tr><td>Co-owner of one or some businesses</td><td>The same Owner role, with those businesses ticked. Not a separate co-owner role. A business left unticked is not theirs, including one opened later, until you add it.</td></tr>
+    <tr><td>General manager</td><td>Manager, with no branch pinned, for the businesses you name. They see every branch of those businesses.</td></tr>
+    <tr><td>Branch manager</td><td>The same Manager role, pinned to one branch. The job title is derived from that pin. It cannot disagree with it.</td></tr>
+    <tr><td>Cashier, sales rep, storekeeper</td><td>Staff, always pinned to one branch.</td></tr>
+    <tr><td>StockRidge support</td><td>Admin. Not counted against the shop's staff. Not a till account. Hidden from the shop's own staff list.</td></tr>
+  </table>
+  <h3>The kind of shop</h3>
+  <p>Creating a business provisions the chart of accounts, categories, customer classes and a starter catalogue from the profile. Do not trade inside a business you did not mean to create.</p>
+  <p>Profiles include electronics, furniture, wholesale and retail, building materials, event rental, equipment rental, leasing, provisions and fabrics, pharmaceutical, supermarket, water packing, bakery, and general retail. Water packing and bakery can run a dispatch mix. A phone shop cannot. A pharmacy can use the Greenbook. A furniture shop cannot open it by knowing the address.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">5</div>
+  <h2>The owner</h2>
+  <p>You see the businesses you own. A proprietor sees every business. A co-owner sees the ones that were ticked. Settings for the whole deployment, and appointing another co-owner, stay with the proprietor or with StockRidge support.</p>
+  <div class="shot"><img src="dashboard-wuse-1280.png" alt="Dashboard for Wuse shop"></div>
+  <p class="cap">SCREEN 2. The dashboard after a sale. The line under the greeting names the business, the shop, and the period. Takings today are N34,000 from one sale. Stock at cost is what remains on the shelf. The drawer names the cashier who has it open.</p>
+  <p>Read that subtitle before you read the numbers. A chip that says one shop while the figures are every shop is how an owner makes a wrong decision. The subtitle is the server's scope, not a decoration.</p>
+  <ul>
+    <li>Takings today, and how many sales, so a quiet counter is visible.</li>
+    <li>Stock at cost, so you can see what is sitting on the shelf.</li>
+    <li>The drawer, separate from the branch safe. The safe is not the float.</li>
+    <li>Export and Refresh. Export is the filtered view, not a different set of numbers.</li>
+  </ul>
+  <p>On a phone the same dashboard is the page. Wide tables scroll sideways. Nothing is removed because the screen is narrow. The word Syncing stays visible. Other net words stay hidden so the bar still fits.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">6</div>
+  <h2>The manager</h2>
+  <p>A general manager runs the businesses they were given, day to day. They see what the owner sees inside that set, except the switches that belong to ownership: deployment settings, appointing a co-owner, and writing off change the owner has reserved.</p>
+  <p>A branch manager runs one shop. StockRidge shows that shop. That is not a punishment. It is so every figure they look at is theirs. They cannot see another shop's safe, stock or staff.</p>
+  <div class="shot"><img src="till-1280.png" alt="Till and safe at a shop with no drawer open"></div>
+  <p class="cap">SCREEN 3. Till and safe at Garki, where nobody has opened a drawer. The other shop can have a till open at the same time. The screen must not borrow Garki's empty drawer onto Wuse's figures, or the reverse.</p>
+  <p>Opening a till records the float that is actually in the drawer. Closing it records the count. A shortage with an honest note is a normal event. A count typed to match the screen is what turns a small gap into a missing day.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">7</div>
+  <h2>The person at the counter</h2>
+  <p>You sell, you take money, you clock in and out. The busiest person has the fewest steps: find the goods, check the cart, take payment.</p>
+  <div class="shot"><img src="pos-staff-1280.png" alt="Sell screen"></div>
+  <p class="cap">SCREEN 4. Sell, signed in as the cashier at Wuse shop. The total is what the shop will post, not a number typed beside it.</p>
+  <div class="pair">
+    <div>
+      <div class="shot"><img src="sales-wuse-1280.png" alt="Sales list with receipt 000001"></div>
+      <p class="cap">SCREEN 5. The receipt after the sale. 000001, 01 Nov 2026, Wuse shop, Chioma Eze, Tunde Bakare, N34,000. The catalogue price won. A payment that did not match that total was refused.</p>
+    </div>
+    <div>
+      <div class="shot"><img src="pos-390.png" alt="Sell on a phone width"></div>
+      <p class="cap">SCREEN 6. The same Sell screen at phone width. Take payment stays on the page. The menu is behind the button at the top left.</p>
+    </div>
+  </div>
+  <p>If the customer hands over more than the sale and you have no change, hold the difference as change owed and print the code. Do not pretend the payment was exact. The shop refused a demonstration payment that was N24,500 over the sale and not held as change. That refusal is the point.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">8</div>
+  <h2>Stock, the till, and the safe</h2>
+  <div class="shot"><img src="v-stock-1280.png" alt="Stock on hand after the sale"></div>
+  <p class="cap">SCREEN 7. Stock at Wuse after receiving 12 and selling 1. Eleven remain. Cost N45,000. Price N34,000. Value N495,000, which is eleven times the cost. The shelf and the books agree.</p>
+  <table>
+    <tr><th>Pot</th><th>What it is</th><th>Who moves it</th></tr>
+    <tr><td>Till drawer</td><td>The float and today's cash</td><td>Whoever has the till open. Open it with the notes that are actually there.</td></tr>
+    <tr><td>Branch safe</td><td>The reserve that does not live in the drawer</td><td>A manager records money in and out with a reason. A cashier spends from it only up to the allowance.</td></tr>
+    <tr><td>Shelf</td><td>Batches, with cost and, where the profile uses it, expiry</td><td>Receive, adjust, transfer, or sell. A transfer keeps the batch. The receiving shop confirms the quantity.</td></tr>
+  </table>
+  <p>Purchase orders are how opening stock should arrive: a supplier, a cost, and a quantity you counted. A stocktake compares the shelf to the system. Close it only after the variances have a reason.</p>
+  <p>Customers, change owed, instalments, deliveries and returns sit under Customers. They appear when the business uses them. A walk-in cash sale does not need a customer record. A credit sale does. The invoice has to belong to someone who can pay it later.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">9</div>
+  <h2>Who can do what</h2>
+  <p>“Own branch” means the rule applies only at the branch that person is pinned to. A general manager has no branch pin, so “own branch” does not apply to them inside the businesses they were given.</p>
+  <table>
+    <tr><th>Action</th><th>Owner</th><th>General manager</th><th>Branch manager</th><th>Staff</th></tr>
+    <tr><td>Make a sale</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>Open and close a till</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>See another shop's drawer</td><td>Yes, inside their businesses</td><td>Yes, inside their businesses</td><td>No</td><td>No</td></tr>
+    <tr><td>Receive stock, raise a purchase order</td><td>Yes</td><td>Yes</td><td>Own branch</td><td>No</td></tr>
+    <tr><td>Change a selling price</td><td>Yes</td><td>If the owner left that switch on</td><td>If the owner left that switch on</td><td>No</td></tr>
+    <tr><td>Hire staff</td><td>Yes</td><td>Yes</td><td>Own branch, below themselves</td><td>No</td></tr>
+    <tr><td>Appoint a co-owner</td><td>Proprietor only</td><td>No</td><td>No</td><td>No</td></tr>
+    <tr><td>See accounting</td><td>Yes</td><td>No</td><td>No</td><td>No</td></tr>
+    <tr><td>See reports</td><td>Yes</td><td>Yes</td><td>Own branch</td><td>No</td></tr>
+    <tr><td>Reset a PIN</td><td>Yes, for people they may manage</td><td>Yes, below themselves</td><td>Own branch, below themselves</td><td>No</td></tr>
+  </table>
+  <p>Admin is not in this table. That account configures the deployment. It is not a cashier and it is not an owner of the shop.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">10</div>
+  <h2>When the line drops</h2>
+  <p>Nigerian shops do not have reliable connectivity. Software that assumes otherwise stops the counter. StockRidge is built the other way round.</p>
+  <ul>
+    <li>Sign in once while the shop answers. After that, a username the shop has already accepted on that device can continue. The PIN is checked against the verifier saved last time. It is not stored.</li>
+    <li>A sale is written on the device before the cashier is told it succeeded. Opening another page must not bring the sign-in form back over that sale.</li>
+    <li>The chip says Syncing while a cycle is running, and Saving… while the write is unfinished. Those words are the same script on the browser, the Windows till, and the phone.</li>
+    <li>Coming back online must not sign the person out. The queue uploads. A sign-out is a deliberate act. The line returning is not a sign-out.</li>
+    <li>On the phone, open the new app once while the Worker answers, so the last page can be stored. A killed app with no stored page has nothing to open. Shop answers are still not stored.</li>
+  </ul>
+  <div class="warn">Do not delete the till file to make a till start. Do not put a Turso token on a computer or a phone. The shop database stays behind the Worker. One account on two devices still signs the first device out. That is the rule, not a fault.</div>
+</section>
+
+<section class="page">
+  <div class="kicker">11</div>
+  <h2>What was tested, and what a screen is for</h2>
+  <p>This guide was not drawn and then hoped to match the software. The demonstration shop was created through the same create-business path a deployment administrator uses. Then the routes the screens call were exercised.</p>
+  <table>
+    <tr><th>What was asked of the system</th><th>What it did</th></tr>
+    <tr><td>Create an electronics business and its first shop</td><td>Provisioned the catalogue. Fifty products. A second shop, Garki, was added beside Wuse.</td></tr>
+    <tr><td>Create proprietor, co-owner, general manager, branch manager, cashier</td><td>Five people, four stored roles. Co-owner was Owner plus the ticked business. General manager was Manager with no branch pin.</td></tr>
+    <tr><td>Receive 12 of a power bank and sell 1</td><td>Shelf went to 11. Value N495,000. Receipt 000001 at the catalogue price, N34,000. A payment of N60,000 with only N1,500 held as change was refused.</td></tr>
+    <tr><td>Open a till, record an expense, clock in</td><td>The drawer opened with a N20,000 float. The expense posted. The shift started.</td></tr>
+    <tr><td>Read the screens an owner opens</td><td>Dashboard, sales, stock, customers, suppliers, orders, expenses, change owed, attendance, returns, reports, accounting, compliance, plan, sync and audit answered.</td></tr>
+    <tr><td>Ask for stock with no shop chosen, as an owner of two shops</td><td>Refused. The system will not guess which shop a stock or cash figure belongs to.</td></tr>
+    <tr><td>Pull a hire book and a pharmacy register for an electronics shop</td><td>The shop answered 403. The till does not treat that as a missing catalogue. Those modules are not this business.</td></tr>
+    <tr><td>Live sample and office hosts</td><td>Both answered health. They were not written to. The seven trading businesses were left alone. No PIN was reset.</td></tr>
+  </table>
+  <p>One screen did not fulfil its job. The dashboard subtitle stayed on “Loading the position…” after the figures had arrived, because it looked for itself in the document before the page had been attached. The figures could then be read without the shop and the period. That lookup now uses the page being built. The photograph in chapter 5 is after that fix: “Adewale Electronics · Wuse shop · 02 Oct 2026 → 01 Nov 2026”.</p>
+  <p>The Windows till and the phone app load this same screen code. The till copies it when the shop screens are staged. The phone loads it from the Worker after a deploy. A fresh Node database also failed to apply the rental-branch migration while stock views still named the branches table. The migrator now parks those views and puts them back. The applied SQL file was not edited. The live database had already passed that file, and it was not copied.</p>
+  <p>The full route-by-route note is in the production audit, row 34. Not every button was pressed on a physical till or a physical phone in this pass. Those two programs were not opened on the shop computer or the handset. The shared screens and the shop routes were.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">12</div>
+  <h2>Getting started</h2>
+  <ol>
+    <li>Change every PIN. Do not leave a demonstration PIN on a live shop.</li>
+    <li>Create the business and choose the vertical. Let provisioning build the catalogue and the books. Do not type opening stock as a sale.</li>
+    <li>Add people. One person, one account. A co-owner is an owner of the businesses you tick. A general manager is a manager with no branch pin.</li>
+    <li>Put opening stock in through a purchase order or a receive, so every batch has a cost.</li>
+    <li>Open the till with the cash actually in the drawer. Put the reserve in the safe, with a reason.</li>
+    <li>Set credit limits only for customers you genuinely extend credit to. Everyone else stays cash.</li>
+    <li>Decide the switches: who may void, who may change a price, and what a cashier may take from the safe.</li>
+  </ol>
+  <div class="note">Run the old process beside this one for a week. Any system, from any vendor, deserves that week. Ask that the installation you will rely on has been opened on the unpacked Windows till and on the phone app, not only in a browser. Do not open the portable exe. Do not pull the parent stockridge folder. Do not pass a PIN reset as part of an ordinary update.</div>
+  <p>The photographs were taken from the running application against one demonstration electronics business with two shops and five people. Figures shown are that demonstration, not a live customer's books.</p>
+  <p class="foot">StockRidge — Onboarding guide. No price is stated here. The commercial terms are a separate writing.</p>
+</section>
+
+</body>
+</html>
