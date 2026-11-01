@@ -50,7 +50,7 @@ The code change starts only after this check is written.
 
 ### Build for this change
 
-Pull stockridge `364fad3` and destop main. The guide commit is `807f03a`. The subtitle fix is `bdec83e`. The live stamp is `ridge-20261101-1435-bdec83e`. Do not pull `C:\Users\Mohammed Hayatudeen\stockridge`. Do not pass `--reset-pin`. Do not deploy again for this change. Do not open the portable exe. Do not treat `f78ea0a` or `ridge-20261031-0853-c0b3a8c` as current.
+Pull stockridge `a094046` and destop main. The category list is `e996957`. The live stamp is `ridge-20261101-1930-e996957`. Do not pull `C:\Users\Mohammed Hayatudeen\stockridge`. Do not pass `--reset-pin`. Do not deploy again for this change. Do not open the portable exe. Do not treat `364fad3` or `ridge-20261101-1435-bdec83e` as current.
 
 Windows till, from PowerShell, after that commit exists:
 
@@ -66,7 +66,7 @@ node .\node_modules\electron-builder\cli.js --win dir --config.win.signAndEditEx
 
 Open `dist\win-unpacked\StockRidge.exe` after closing the old window. The machine must be Node.js 22.12 or newer. Do not run `npm run rebuild`. Do not compile the SQL library.
 
-Phone. This stage did not change the phone project. Do not rebuild the APK for the subtitle. Do not run `stage-ui.js` for the phone. Open the app once while the Worker answers. The script on that page is the Worker copy, stamp `ridge-20261101-1435-bdec83e`. A killed app still opens the last stored page. Do not deploy again for this change.
+Phone. This stage did not change the phone project. Do not rebuild the APK for the category list. Do not run `stage-ui.js` for the phone. Open the app once while the Worker answers. The script on that page is the Worker copy, stamp `ridge-20261101-1930-e996957`. A killed app still opens the last stored page. Do not deploy again for this change.
 
 ## Standing rules
 
@@ -498,10 +498,22 @@ The chip, the bar, and the login line are not separate checks. They all read `SR
 - **Guide:** `docs/stockridge-onboarding-guide.pdf`. No pricing chapter. No demonstration PIN. The seven live businesses are not in it. The uploaded PharmaRidge guide is not the source of the wording.
 - **Outcome:** **Not confirmed.** Deployed. Stockridge `bdec83e`, stamp commit `364fad3`. Destop `e24e06b` records the guide and this row. Stamp `ridge-20261101-1435-bdec83e`. Sample version `a6ae3419-6f95-47f6-9336-20acce03f75f`. Office version `fadcc606-95af-4de9-a7dc-8d3c600f5065`. Both hosts answered `/api/health` 200 and served `wrap.querySelector('#dash-sub')` and `let waitTimer = null`. Not marked Success. Not confirmed on a till or a phone. The Windows till does not pick this up until they pull and open the new unpacked exe. The phone loads the script from the Worker; the APK does not need a rebuild for this subtitle. Do not open the portable exe. Do not pass `--reset-pin`. Do not copy D1 onto Turso. Do not redeploy stamp `ridge-20261031-0853-c0b3a8c` by itself.
 
+### 35. Categories were two trees. They are one list.
+
+- **Symptom:** the catalogue kept Pharmaceuticals and Non-pharmaceuticals as a parent tree, and the shelves as a second list under them. Stock valuation and the profit and loss repeated that split. The till’s category control offered only the two parents.
+- **From:** `ensureMajors` filed every shelf under one of those two rows, and the screens drew the parents as their own sections. Create and edit already existed, but they asked which parent a shelf sat under.
+- **To:** one list. A category counts as Pharmaceuticals or as Others. Others is the same stored side the books already called non-pharmaceuticals, so an old ledger line still reads. Create still asks for a name and which it counts as. Edit still renames a category or moves that count. The parent rows stay out of the list. A NAFDAC catalogue medicine stays pharmaceutical. The till, sales, and stock filter by the category, not by a second tree.
+- **Why:** two hierarchies made the owner file a product twice in their head. The books still need to know a drug from a drink. That is a property of the category, not a second catalogue.
+- **Functions:** `paintShelves` and `addCategory` in `public/js/views/products.js`. `paintSellingCategories` in `public/js/views/pos.js`. `normalizeSide` in `server/services/categorySides.js`. `POST /api/categories` and `PUT /api/categories/:id`. `category_id` on `GET /api/stock` and `GET /api/sales`.
+- **What breaks if this is altered:** drawing the two parents as sections brings the second tree back. Renaming the stored code `NON_PHARMACEUTICALS` makes an old ledger line that starts “Non-pharmaceuticals” unread. Editing migration `0014` does not change a shop that already has the shelves.
+- **Exercise, local demonstration shop only:** a pharmaceutical business was created through the same create-business path. 86 categories came back in one list, 22 counting as pharmaceuticals and the rest as others. The two parent rows were not in that list, and the others row is named Others. Creating “Shop cables” as others, then editing it to “Counter cables” counting as pharmaceuticals, both succeeded. A category named Pharmaceuticals was refused. A kind that is neither was refused. Stock and sales filtered by that category returned 200. Valuation and profit-and-loss returned 200. The catalogue photograph shows one list, an Others badge, and Add a category with Counts as. The seven live businesses were not written. No PIN reset. No D1 copy.
+- **Screens, and which client they are:** the photograph is the browser, which is the same screen code the PWA, the Windows till and the Android WebView load. This sandbox cannot open the unpacked exe or the APK. Not confirmed on a till or a phone.
+- **Outcome:** **Not confirmed.** Deployed. Stockridge `e996957`, stamp commit `a094046`. Stamp `ridge-20261101-1930-e996957`. Sample version `3e634786-f4e2-43cf-b177-7db2900e057f`. Office version `05306f9f-b811-469b-acf9-5a39d4f5c8ed`. Both hosts answered `/api/health` 200 and served the one list. Not marked Success. Not confirmed on a till or a phone. The Windows till does not pick this up until they pull and open the new unpacked exe. The phone loads the script from the Worker; the APK does not need a rebuild for this list. Do not open the portable exe. Do not pass `--reset-pin`. Do not copy D1 onto Turso.
+
 ## Not production-ready
 
 - The exe they open may still be an older unpacked build, or the locked portable file from 20 Oct 2026 4:37:44 PM. Length of that old file was 77304820.
-- The live hosts serve `ridge-20261101-1435-bdec83e`. A browser refresh picks that up. The Windows till does not, until they pull this change and open the new unpacked `StockRidge.exe`. A file shipped in that exe wins over the PWA. Do not open the locked portable exe. Do not pass `--reset-pin`. Do not treat `ridge-20261031-0853-c0b3a8c` or `ridge-20261030-0910-7f185a1` as the live hosts.
+- The live hosts serve `ridge-20261101-1930-e996957`. A browser refresh picks that up. The Windows till does not, until they pull this change and open the new unpacked `StockRidge.exe`. A file shipped in that exe wins over the PWA. Do not open the locked portable exe. Do not pass `--reset-pin`. Do not treat `ridge-20261101-1435-bdec83e` or `ridge-20261031-0853-c0b3a8c` as the live hosts.
 - The exe is unsigned. Leave `signAndEditExecutable` false until `CSC_LINK` exists.
 - Offline sign-in only works for a username the shop has already accepted on this till. That is intentional.
 - One account, one device will keep signing the other session out after the 12 second sign-in window. That is the product rule.
