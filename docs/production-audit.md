@@ -50,7 +50,7 @@ The code change starts only after this check is written.
 
 ### Build for this change
 
-Pull stockridge `f78ea0a` and the destop commit that contains this file. The script is `c0b3a8c`. The phone cache is `a68e82a`. Do not pull `C:\Users\Mohammed Hayatudeen\stockridge`. Do not pass `--reset-pin`. Do not deploy again for this change. Do not open the portable exe.
+Pull stockridge `364fad3` and destop main. The guide commit is `807f03a`. The subtitle fix is `bdec83e`. The live stamp is `ridge-20261101-1435-bdec83e`. Do not pull `C:\Users\Mohammed Hayatudeen\stockridge`. Do not pass `--reset-pin`. Do not deploy again for this change. Do not open the portable exe. Do not treat `f78ea0a` or `ridge-20261031-0853-c0b3a8c` as current.
 
 Windows till, from PowerShell, after that commit exists:
 
@@ -66,15 +66,7 @@ node .\node_modules\electron-builder\cli.js --win dir --config.win.signAndEditEx
 
 Open `dist\win-unpacked\StockRidge.exe` after closing the old window. The machine must be Node.js 22.12 or newer. Do not run `npm run rebuild`. Do not compile the SQL library.
 
-Phone, from the same destop folder, after that commit exists. This does not use the sibling pull or `stage-ui.js`:
-
-```
-cd C:\Users\Mohammed Hayatudeen\stockridge\destop-stockridge
-git pull
-.\tools\android-from-electron.ps1
-```
-
-The APK is `android\app\build\outputs\apk\debug\app-debug.apk`. Open the app once while the Worker answers, so the shell can be stored. After that, a killed app can open that page with the line down. The script on that page is the Worker copy, stamp `ridge-20261031-0853-c0b3a8c`. Do not deploy again for this change.
+Phone. This stage did not change the phone project. Do not rebuild the APK for the subtitle. Do not run `stage-ui.js` for the phone. Open the app once while the Worker answers. The script on that page is the Worker copy, stamp `ridge-20261101-1435-bdec83e`. A killed app still opens the last stored page. Do not deploy again for this change.
 
 ## Standing rules
 
