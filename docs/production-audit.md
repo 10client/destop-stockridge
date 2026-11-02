@@ -50,7 +50,7 @@ The code change starts only after this check is written.
 
 ### Build for this change
 
-Pull stockridge `a094046` and destop main. The category list is `e996957`. The live stamp is `ridge-20261101-1930-e996957`. Do not pull `C:\Users\Mohammed Hayatudeen\stockridge`. Do not pass `--reset-pin`. Do not deploy again for this change. Do not open the portable exe. Do not treat `364fad3` or `ridge-20261101-1435-bdec83e` as current.
+Pull stockridge `adc73c0` and destop main. The screen change is `7b850c3`. The live stamp is `ridge-20261102-0854-7b850c3`. Do not pull `C:\Users\Mohammed Hayatudeen\stockridge`. Do not pass `--reset-pin`. Do not deploy again for this change. Do not open the portable exe. Do not treat `a094046` or `ridge-20261101-1930-e996957` as current.
 
 Windows till, from PowerShell, after that commit exists:
 
@@ -66,7 +66,7 @@ node .\node_modules\electron-builder\cli.js --win dir --config.win.signAndEditEx
 
 Open `dist\win-unpacked\StockRidge.exe` after closing the old window. The machine must be Node.js 22.12 or newer. Do not run `npm run rebuild`. Do not compile the SQL library.
 
-Phone. This stage did not change the phone project. Do not rebuild the APK for the category list. Do not run `stage-ui.js` for the phone. Open the app once while the Worker answers. The script on that page is the Worker copy, stamp `ridge-20261101-1930-e996957`. A killed app still opens the last stored page. Do not deploy again for this change.
+Phone. This stage did not change the phone project. Do not rebuild the APK for these screens. Do not run `stage-ui.js` for the phone. Open the app once while the Worker answers. The script on that page is the Worker copy, stamp `ridge-20261102-0854-7b850c3`. A killed app still opens the last stored page. Do not deploy again for this change.
 
 ## Standing rules
 
@@ -520,10 +520,30 @@ The chip, the bar, and the login line are not separate checks. They all read `SR
 - **What breaks if this is altered:** editing `0001_schema.sql` after it is applied makes the next migrate refuse to start. Recreating the old numbered files and applying them on this database creates tables that already exist. Copying D1 back onto Turso puts the old seven businesses on top of the format.
 - **Outcome:** **Not confirmed.** Not a Worker deploy. The till file on a computer is not this database. A queued sale on that till would upload if the till is opened online. Do not open the portable exe. Do not pass `--reset-pin` on a later deploy. Do not copy D1 onto Turso. The PIN is not in the repo.
 
+### 37. The books the engine already keeps were not on the screen.
+
+- **Symptom, in their words:** run the required audit of every backend line against the front end, and if a line is implemented, whether it is implemented the best way the backend already allows. The fix belongs in this audit. Deploy. Then the Windows and Android build commands.
+- **Read first:** rows 16, 17, 18, and 35. Those already say a purchase order must not look raised when the token was refused, a receipt must match the price the till showed, a sale must not die on a missing local function, and categories are one list. None of those rows cover a path the screen calls that the server does not have, or a finished server path the screen never calls.
+- **File:** `stockridge/public/js/views/fleet.js` posts `POST /api/dispatch/duties/:id/end`. `server/routes/dispatch.js` answers `POST /api/duties/:id/end`. Ending an assignment is a 404. The rest of the fleet API lives under `/api/dispatch`.
+- **Same gap, other screens:** `POST /api/customers/:id/write-off` has no button. `GET /api/customers/:id/statement` is not what Statement prints. Create and edit never send `customer_class_id`, and there is no screen for `POST /api/customer-classes`, so a class the sale engine already reads cannot be chosen. `GET /api/price-lists` and `POST /api/price-lists/:id/items` have no screen, so the wholesale list created with the business never gets a price. `GET /api/banking` is not a tab. A shared market row tells the person to copy it into the business, and `POST /api/market-catalogue/adopt` is never called. `POST /api/sync/heartbeat` is never called, so a till whose upload was refused does not update last seen.
+- **What those lines do:** they are the finished server rules. A write-off needs an owner and a sentence. A statement foots opening plus the window. A class that refuses credit cannot carry a limit. A wholesale tier is a price-list item. A shared market row is not edited into a shop category. A heartbeat names the device and the branch.
+- **Must not:** add a fifth stored role, use `job_title`, store the PIN, pass `--reset-pin`, copy D1 onto Turso, put a Turso token on the till, or edit `0001_schema.sql`, `0010`, `0013`, or `0014`.
+
+The code change starts only after this check is written.
+
+- **To:** `POST /api/dispatch/duties/:id/end` is the same end as `POST /api/duties/:id/end`. The fleet button already used the dispatch path. An owner can write off a debt from the customer, with the amount and a sentence. Statement asks `GET /api/customers/:id/statement` and prints the opening and the closing. Create and edit offer the classes the sale engine already reads, and an owner can add a class. A class that refuses credit cannot be saved with a limit. A shop-owned product can set a price on the wholesale list created with the business, in that product's own unit. Cash & bank reads `GET /api/banking`. A shared market row has Add to this shop, which calls `POST /api/market-catalogue/adopt`. A refused upload, or a pull that did not finish, sends `POST /api/sync/heartbeat` and does not copy the books.
+- **Left as they were:** the other 200-odd routes already had a screen. Branding, sale-issue correct and clear, notifications, and NAFDAC adopt were already called. The dashboard uses `GET /api/dashboard`, not the summary alias. The business screen uses `GET /api/catalogue/profiles`, not `GET /api/profiles/:code`. Health ready and the manifest are not screens. A successful pull already stamps last seen, so a heartbeat is not sent on that path.
+- **Why:** a button that posts a path the server does not have looks like the assignment ended and leaves the driver on the vehicle. A debt the owner cannot write off stays on the balance sheet. A statement that ignores the opening does not foot.
+- **Functions:** `endDuty` in `server/routes/dispatch.js`. `writeOff`, `statement`, and `openClass` in `public/js/views/customers.js`. `wholesaleCard` and `addSharedToShop` in `public/js/views/products.js`. `renderBanking` in `public/js/views/accounting.js`. `heartbeat` in `public/js/sync.js`.
+- **What breaks if this is altered:** dropping the short duty path breaks an older till that already learned it. Letting a cashier write off a debt removes an asset without the owner. Sending a heartbeat failure as a sign-out repeats row 25.
+- **Exercise, local demonstration shop only:** Audit Electronics, one Abuja branch, administrator signed in. Not Turso. No PIN stored. Four classes came back with the business, and a fifth, Contractors, was created. A cash-only class with a ₦50,000 limit was refused. Retail and Wholesale lists came back. Banking returned ₦0 across 5 accounts. Ending an assignment that does not exist returned `DUTY_NOT_FOUND` on both paths, not a missing route. A market row was copied into the shop. Its wholesale price was set at 5+ bag for ₦4,500. Ada Okonkwo's ₦1,500 balance took a ₦500 write-off; a one-word reason was refused; the ledger stored `WRITE_OFF` of −500 and the balance left was ₦1,000. The statement opened and closed at 0 before that. A heartbeat returned 200 and sync status showed 1 device. No D1 copy. `--reset-pin` was not passed.
+- **Screens, and which client they are:** the same screen code the browser, the Windows till, and the Android WebView load. This sandbox cannot open the unpacked exe or the APK. Not confirmed on a till or a phone.
+- **Outcome:** **Not confirmed.** Deployed. Stockridge `7b850c3`, stamp commit `adc73c0`. Stamp `ridge-20261102-0854-7b850c3`. Sample version `fbb2c8c4-2f07-4cb6-b5e0-f9d44efa7b48`. Office version `ccbaffa0-c031-4cbf-9c7c-478efb376b22`. Both hosts answered `/api/health` 200 and served the stamp. Not marked Success. The Windows till does not pick this up until they pull and open the new unpacked exe. The phone loads the script from the Worker; the APK does not need a rebuild for these screens. Do not open the portable exe. Do not pass `--reset-pin`. Do not copy D1 onto Turso. Do not redeploy stamp `ridge-20261101-1930-e996957` by itself.
+
 ## Not production-ready
 
 - The exe they open may still be an older unpacked build, or the locked portable file from 20 Oct 2026 4:37:44 PM. Length of that old file was 77304820.
-- The live hosts serve `ridge-20261101-1930-e996957`. A browser refresh picks that up. The Windows till does not, until they pull this change and open the new unpacked `StockRidge.exe`. A file shipped in that exe wins over the PWA. Do not open the locked portable exe. Do not pass `--reset-pin`. Do not treat `ridge-20261101-1435-bdec83e` or `ridge-20261031-0853-c0b3a8c` as the live hosts.
+- The live hosts serve `ridge-20261102-0854-7b850c3`. A browser refresh picks that up. The Windows till does not, until they pull this change and open the new unpacked `StockRidge.exe`. A file shipped in that exe wins over the PWA. Do not open the locked portable exe. Do not pass `--reset-pin`. Do not treat `ridge-20261101-1930-e996957`, `ridge-20261101-1435-bdec83e`, or `ridge-20261031-0853-c0b3a8c` as the live hosts.
 - The exe is unsigned. Leave `signAndEditExecutable` false until `CSC_LINK` exists.
 - Offline sign-in only works for a username the shop has already accepted on this till. That is intentional.
 - One account, one device will keep signing the other session out after the 12 second sign-in window. That is the product rule.
