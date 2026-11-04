@@ -590,7 +590,10 @@ async function askShopRead(hostTarget, hostTransport, url, method, pageHeaders, 
       // its budget must not start another minute. A fast certificate miss on
       // a read still gets the next path.
       if (budget.once && requestMayHaveLanded(err)) break;
-      if (budget.catalogue && Date.now() - started > 8000) break;
+      // A catalogue page that has already used most of its wait must not start
+      // another minute. A miss in the first few seconds is a dead path, not a
+      // shop that was still sending, and the next path is what finishes the copy.
+      if (budget.catalogue && Date.now() - started > 20000) break;
     }
   }
   return spoke;
