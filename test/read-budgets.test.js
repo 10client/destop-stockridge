@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip, foreignSignature } = require('../electron/server');
+const { readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip, shopEndedSession, foreignSignature } = require('../electron/server');
 
 test('every shop read can use IPv4, the inspected certificate, and the other host', () => {
   const budget = readBudgets('/api/health');
@@ -52,7 +52,8 @@ test('a gateway failure is not the shop, and a refusal is', () => {
 
 test('a dropped token or a device mismatch is not the last answer from one path', () => {
   assert.equal(sessionBlip({ status: 401, body: Buffer.from('{"code":"NO_TOKEN"}') }), true);
-  assert.equal(sessionBlip({ status: 401, body: Buffer.from('{"code":"SESSION_SUPERSEDED"}') }), true);
+  assert.equal(sessionBlip({ status: 401, body: Buffer.from('{"code":"SESSION_SUPERSEDED"}') }), false);
+  assert.equal(shopEndedSession({ status: 401, body: Buffer.from('{"code":"SESSION_SUPERSEDED"}') }), true);
   assert.equal(sessionBlip({ status: 401, body: Buffer.from('{"code":"SESSION_REVOKED"}') }), false);
   assert.equal(sessionBlip({ status: 200, body: Buffer.from('{"ok":true}') }), false);
   assert.equal(foreignSignature({ status: 401, body: Buffer.from('{"error":"Invalid token signature","code":"TOKEN_BAD_SIGNATURE"}') }), true);

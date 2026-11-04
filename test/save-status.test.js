@@ -43,8 +43,9 @@ test('a running save, a refused sale, and an empty till are not finished', () =>
   assert.equal(missed.label, 'Not saved');
   assert.match(missed.detail, /did not finish sending the catalogue/);
   const emptyShop = decideSaveStatus({ catalogueEmpty: true, lastPullAt: 'x' });
-  assert.equal(emptyShop.label, 'Not saved');
-  assert.match(emptyShop.detail, /no products or stock/);
+  assert.equal(emptyShop.label, 'Saved');
+  assert.equal(emptyShop.finished, true);
+  assert.match(emptyShop.detail, /no goods yet/);
 });
 
 test('a refused session or a short catalogue is not Saved', () => {

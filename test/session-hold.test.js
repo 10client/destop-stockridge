@@ -9,7 +9,7 @@ const { decideSessionHold } = require('../lib/session-hold');
 
 test('a line that returns does not sign out a saved till', () => {
   const held = decideSessionHold({
-    reason: 'SESSION_SUPERSEDED',
+    reason: 'TOKEN_EXPIRED',
     hasLocalSession: true,
     reconnecting: true,
     shopConfirmed: true,
@@ -33,27 +33,26 @@ test('a line that returns does not sign out a saved till', () => {
   assert.equal(expired.needsSignInToUpload, true);
 });
 
-test('another device signs this till out only after the shop confirms it twice', () => {
+test('another device signs this till out on the shop\'s first answer', () => {
   const once = decideSessionHold({
     reason: 'SESSION_SUPERSEDED',
     hasLocalSession: true,
     shopConfirmed: true,
     reconnecting: false,
   });
-  assert.equal(once.signOut, false);
-  const twice = decideSessionHold({
+  assert.equal(once.signOut, true);
+  assert.equal(once.keep, false);
+  const unconfirmed = decideSessionHold({
     reason: 'SESSION_SUPERSEDED',
     hasLocalSession: true,
-    shopConfirmed: true,
-    reconnecting: false,
-    confirmedTwice: true,
+    shopConfirmed: false,
   });
-  assert.equal(twice.signOut, true);
+  assert.equal(unconfirmed.signOut, false);
 });
 
 test('changing page while the line returns does not sign out', () => {
   const moved = decideSessionHold({
-    reason: 'SESSION_SUPERSEDED',
+    reason: 'TOKEN_EXPIRED',
     hasLocalSession: true,
     shopConfirmed: true,
     reconnecting: false,
@@ -64,7 +63,7 @@ test('changing page while the line returns does not sign out', () => {
   assert.equal(moved.keep, true);
 });
 
-test('sales still waiting on this till are not a sign-out', () => {
+test('sales still waiting do not block a session the other device replaced', () => {
   const waiting = decideSessionHold({
     reason: 'SESSION_REVOKED',
     hasLocalSession: true,
@@ -74,21 +73,21 @@ test('sales still waiting on this till are not a sign-out', () => {
     confirmedTwice: true,
     pendingUpload: true,
   });
-  assert.equal(waiting.signOut, false);
-  assert.equal(waiting.keep, true);
+  assert.equal(waiting.signOut, true);
+  assert.equal(waiting.keep, false);
 });
 
-test('uploading queued sales does not sign out', () => {
+test('uploading does not keep a session another device has taken', () => {
   const sending = decideSessionHold({
     reason: 'SESSION_SUPERSEDED',
     hasLocalSession: true,
     shopConfirmed: true,
-    reconnecting: false,
-    confirmedTwice: true,
+    reconnecting: true,
+    confirmedTwice: false,
     uploading: true,
   });
-  assert.equal(sending.signOut, false);
-  assert.equal(sending.keep, true);
+  assert.equal(sending.signOut, true);
+  assert.equal(sending.keep, false);
 });
 
 test('the till script uses the same decision', () => {

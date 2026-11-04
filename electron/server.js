@@ -400,7 +400,14 @@ function shopSpoke(upstream) {
 // may keep them. A revoked or expired token is final.
 function sessionBlip(upstream) {
   const text = responseText(upstream);
-  return /NO_TOKEN|SESSION_SUPERSEDED/.test(text);
+  // A missing token can be a header this path dropped. Try the next path.
+  // SESSION_SUPERSEDED is the shop's decision that another device took the
+  // account. It is not retried, and it is not replaced by the saved till.
+  return /NO_TOKEN/.test(text) && !/SESSION_SUPERSEDED|SESSION_REVOKED|USER_GONE/.test(text);
+}
+
+function shopEndedSession(upstream) {
+  return /SESSION_SUPERSEDED|SESSION_REVOKED|USER_GONE/.test(responseText(upstream));
 }
 
 // The other host signs with its own secret. Its "Invalid token signature" is
@@ -571,6 +578,7 @@ async function askShopRead(hostTarget, hostTransport, url, method, pageHeaders, 
         });
       const plain = decodeUpstream(got);
       if (!shopSpoke(plain)) continue;
+      if (shopEndedSession(plain)) return plain;
       if (sessionBlip(plain) || electronLostDevice(plain, deviceId)) {
         spoke = plain;
         continue;
@@ -622,6 +630,13 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
       // an order this host already kept.
       const once = isOneShotWrite(method, url);
       upstream = await askShopRead(target, transport, url, method, pageHeaders, nodeHeaders, body, deviceId);
+      if (shopEndedSession(upstream)) {
+        if (res.headersSent) return;
+        const plain = decodeUpstream(upstream);
+        res.writeHead(plain.status, responseForWindow(plain.headers, plain.body));
+        res.end(plain.body);
+        return;
+      }
       let blip = upstream && sessionBlip(upstream) ? upstream : null;
       if (blip) upstream = null;
       if (!upstream && other && !once) {
@@ -658,4 +673,4 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip, foreignSignature };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip, shopEndedSession, foreignSignature };
