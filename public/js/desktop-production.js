@@ -234,7 +234,9 @@
         // never stored, and the screen then says the shop did not answer.
         if (isLogin) throw err;
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 12000);
+        const timer = setTimeout(() => {
+          try { controller.abort(new DOMException('The shop did not answer in time.', 'AbortError')); } catch (e) { controller.abort(); }
+        }, 12000);
         try {
           return await origFetch(target, Object.assign({}, next, { signal: controller.signal }));
         } catch (again) {
@@ -253,6 +255,15 @@
     const orig = ui.errorBlock.bind(ui);
       function errorBlock(err, opts) {
       const message = String((err && err.message) || '');
+      const causeMsg = String((err && err.cause && err.cause.message) || '');
+      const isAbortMessage = /aborted|signal is aborted|did not answer in time/i.test(message) || /aborted|signal is aborted/i.test(causeMsg) || (err && err.name === 'AbortError');
+      if (isAbortMessage) {
+        const soft = new Error('The server did not answer in time. Check the connection and try again.');
+        soft.code = 'OFFLINE';
+        soft.isOffline = true;
+        soft.cause = err;
+        return orig(soft, opts);
+      }
       if (shopUp !== true && /shop is up/i.test(message)) {
         const soft = new Error('The shop did not answer from this window. Figures saved on this till are still here.');
         soft.code = 'OFFLINE';
@@ -264,7 +275,8 @@
         up.code = 'SHOP_READ_FAILED';
         return orig(up, opts);
       }
-      const missed = /failed to fetch/i.test(message)
+      const missed = /failed to fetch|did not answer in time|did not answer from this window|shop server could not be reached|aborted|signal is aborted/i.test(message)
+        || /aborted|signal is aborted/i.test(causeMsg)
         || (err && (err.isOffline || err.code === 'OFFLINE' || err.code === 'UPSTREAM_UNREACHABLE'));
       if (!missed) return orig(err, opts);
       const soft = new Error('The shop did not answer from this window. Figures saved on this till are still here.');
@@ -480,10 +492,19 @@
     async function clearSavedToken(username) {
       await writeUser(username, { token: null, expiresAt: 0 }).catch(() => {});
     }
+    function isAbortError(err) {
+      if (!err) return false;
+      if (err.name === 'AbortError') return true;
+      const msg = String((err && err.message) || '') + ' ' + String((err && err.cause && err.cause.message) || '');
+      return /aborted|signal is aborted/i.test(msg);
+    }
+
     async function askShop(creds) {
       const id = deviceIdNow();
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 40000);
+      const timer = setTimeout(() => {
+        try { controller.abort(new DOMException('The server did not answer in time.', 'AbortError')); } catch (e) { controller.abort(); }
+      }, 40000);
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
@@ -517,12 +538,13 @@
         return body;
       } catch (err) {
         if (err && err.code) throw err;
-        const wrapped = new Error(err && err.name === 'AbortError'
+        const wrapped = new Error(isAbortError(err)
           ? 'The server did not answer in time. Check the connection and try again.'
           : 'The shop did not answer from this window. Try again.');
         wrapped.code = 'OFFLINE';
         wrapped.isOffline = true;
         wrapped.status = 0;
+        wrapped.cause = err;
         throw wrapped;
       } finally {
         clearTimeout(timer);
