@@ -2,6 +2,10 @@
 // Loaded only by the desktop window. A browser that opens the hosted site
 // does not get this file. It does not store a PIN and it does not talk to Turso.
 (function (global) {
+  // The proxy's two serialized hosts can use 60 seconds, with a 65-second
+  // hard cap. Do not abandon a valid fallback answer at the old 40 seconds.
+  const LOGIN_WINDOW_WAIT_MS = 70000;
+
   function desktopFetchPolicy(input, init, url, api) {
     const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
     // Use the shared policy whenever the normal script order has loaded api.js.
@@ -15,7 +19,7 @@
         && String(url || '').split('?')[0] !== '/api/auth/login');
     return { method, oneShot: Boolean(oneShot) };
   }
-  if (typeof module !== 'undefined' && module.exports) module.exports = { desktopFetchPolicy };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { desktopFetchPolicy, LOGIN_WINDOW_WAIT_MS };
 
   const native = global.stockridgeNative;
   if (!native || !native.store) return;
@@ -530,7 +534,7 @@
       const controller = new AbortController();
       const timer = setTimeout(() => {
         try { controller.abort(new DOMException('The server did not answer in time.', 'AbortError')); } catch (e) { controller.abort(); }
-      }, 40000);
+      }, LOGIN_WINDOW_WAIT_MS);
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
@@ -605,8 +609,10 @@
     async function login(creds) {
       localSessionOnly = false;
       await deviceReady;
-      let live = await takeLive(creds);
-      if (!live && await shopAnswers()) live = await takeLive(creds);
+      // The proxy already tries its paths and sibling serially. A health
+      // response is not permission to create a second session for this click.
+      // If sign-in did not finish, the person can deliberately try again.
+      const live = await takeLive(creds);
       if (live && live.token && !live.offline) {
         localSessionOnly = false;
         if (SR.api.noteReachable) SR.api.noteReachable(true);

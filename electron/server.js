@@ -29,6 +29,11 @@ const MIME = Object.freeze({
 
 const HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers', 'transfer-encoding', 'upgrade', 'host']);
 
+// Four serialized paths can take 30 seconds on each of the two Workers.
+// Keep a five-second margin inside the renderer's 70-second wait, and put a
+// hard stop on a response body that trickles past its socket-idle timeout.
+const LOGIN_PROXY_WAIT_MS = 65000;
+
 function publicDir(root) {
   return path.resolve(root, 'public');
 }
@@ -281,7 +286,7 @@ function chooseStaticFile(bundledExists, cachedExists) {
   return null;
 }
 
-function nodeUpstream(target, transport, url, method, headers, body, { family = undefined, rejectUnauthorized = true, timeout = 12000 } = {}) {
+function nodeUpstream(target, transport, url, method, headers, body, { family = undefined, rejectUnauthorized = true, timeout = 12000, signal = null } = {}) {
   return new Promise((resolve, reject) => {
     const options = {
       protocol: target.protocol,
@@ -295,9 +300,15 @@ function nodeUpstream(target, transport, url, method, headers, body, { family = 
       rejectUnauthorized,
     };
     if (family) options.family = family;
+    // Node destroys the request and emits an AbortError when the renderer
+    // disconnects or the single login deadline expires. The existing error
+    // path below then rejects and stops the serialized attempts.
+    if (signal) options.signal = signal;
     const upstream = transport.request(options, (pres) => {
       const chunks = [];
       pres.on('data', (chunk) => chunks.push(chunk));
+      pres.on('error', fail);
+      pres.on('aborted', () => fail(new Error('The shop response ended before its body finished.')));
       pres.on('end', () => {
         const out = {};
         for (const [key, value] of Object.entries(pres.headers)) {
@@ -322,7 +333,7 @@ function nodeUpstream(target, transport, url, method, headers, body, { family = 
   });
 }
 
-function netUpstream(target, url, method, headers, body, { timeout = 12000 } = {}) {
+function netUpstream(target, url, method, headers, body, { timeout = 12000, signal = null } = {}) {
   const electron = electronNet();
   if (!electron) return Promise.reject(new Error('Chromium network is not available.'));
   return new Promise((resolve, reject) => {
@@ -337,13 +348,22 @@ function netUpstream(target, url, method, headers, body, { timeout = 12000 } = {
       reject(err);
       return;
     }
+    let onAbort = null;
+    const cleanup = () => {
+      clearTimeout(timer);
+      if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+    };
+    const fail = (err) => {
+      cleanup();
+      reject(err instanceof Error ? err : new Error('The shop server could not be reached.'));
+    };
     const timer = setTimeout(() => {
       try { upstream.abort(); } catch (abortErr) { /* already finished */ }
-      reject(new Error('The Worker did not answer in time.'));
+      fail(new Error('The Worker did not answer in time.'));
     }, timeout);
-    const fail = (err) => {
-      clearTimeout(timer);
-      reject(err instanceof Error ? err : new Error('The shop server could not be reached.'));
+    onAbort = () => {
+      try { upstream.abort(); } catch (abortErr) { /* already finished */ }
+      fail(new Error('The window stopped waiting for this login.'));
     };
     const headed = withBodyLength(Object.assign({ 'user-agent': CHROME_UA }, headers || {}), body);
     for (const [key, value] of Object.entries(headed)) {
@@ -354,7 +374,7 @@ function netUpstream(target, url, method, headers, body, { timeout = 12000 } = {
     upstream.on('response', (response) => {
       response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
       response.on('end', () => {
-        clearTimeout(timer);
+        cleanup();
         const out = {};
         for (const [key, value] of Object.entries(response.headers || {})) {
           if (HOP.has(key.toLowerCase())) continue;
@@ -365,6 +385,13 @@ function netUpstream(target, url, method, headers, body, { timeout = 12000 } = {
       response.on('error', fail);
     });
     upstream.on('error', fail);
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
     if (body && body.length && method !== 'GET' && method !== 'HEAD') upstream.write(body);
     upstream.end();
   });
@@ -498,21 +525,25 @@ function acceptedLogin(requestBody, upstream) {
 // One login request at a time. Two parallel logins would sign the same account
 // out of itself. This is not the window calling the Worker. A path that does
 // not return a real login answer is not kept, or a new person is never stored.
-async function loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body) {
+async function loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body, signal) {
   const tries = [];
   if (target.protocol === 'https:' && electronNet()) {
-    tries.push(() => netUpstream(target, url, method, pageHeaders, body, { timeout: 8000 }));
+    tries.push(() => netUpstream(target, url, method, pageHeaders, body, { timeout: 8000, signal }));
   }
-  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { timeout: 8000 }));
-  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: 8000 }));
+  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { timeout: 8000, signal }));
+  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: 8000, signal }));
   if (target.protocol === 'https:') {
     tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, {
       family: 4,
       rejectUnauthorized: false,
       timeout: 6000,
+      signal,
     }));
   }
   for (const attempt of tries) {
+    // An aborted window must not leave another login running, and the shared
+    // deadline must not start one last path after its budget has expired.
+    if (signal && signal.aborted) return null;
     try {
       const upstream = loginAnswer(decodeUpstream(await attempt()));
       if (upstream) return upstream;
@@ -604,6 +635,24 @@ async function askShopRead(hostTarget, hostTransport, url, method, pageHeaders, 
   return spoke;
 }
 
+function watchLoginWindow(res) {
+  const controller = new AbortController();
+  const onClose = () => {
+    // A normal res.end() also emits close. Only a window that went away
+    // before a response was finished should cancel the upstream login.
+    if (!res.writableEnded) controller.abort();
+  };
+  res.once('close', onClose);
+  const timer = setTimeout(() => controller.abort(), LOGIN_PROXY_WAIT_MS);
+  return {
+    signal: controller.signal,
+    done() {
+      clearTimeout(timer);
+      res.removeListener('close', onClose);
+    },
+  };
+}
+
 function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, fallback) {
   readBody(req).then(async (body) => {
     const method = req.method || 'GET';
@@ -616,20 +665,26 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
     let upstream = null;
     const other = fallback && fallback.origin !== target.origin ? fallback : null;
     if (login) {
-      upstream = await loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body);
-      // One login at a time. The other host is asked only when this host did
-      // not answer a login. Two parallel logins would sign the account out.
-      if (!upstream && other) {
-        const otherTransport = other.protocol === 'http:' ? http : https;
-        const otherHeaders = forwardHeaders(req.headers, { host: other.host });
-        otherHeaders['user-agent'] = CHROME_UA;
-        if (deviceId) otherHeaders['x-device-id'] = deviceId;
-        upstream = await loginUpstream(other, otherTransport, url, method, pageHeaders, otherHeaders, body);
+      const waiting = watchLoginWindow(res);
+      try {
+        upstream = await loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body, waiting.signal);
+        // One login at a time. The other host is asked only when this host did
+        // not answer a login. Two parallel logins would sign the account out.
+        if (!upstream && other && !waiting.signal.aborted) {
+          const otherTransport = other.protocol === 'http:' ? http : https;
+          const otherHeaders = forwardHeaders(req.headers, { host: other.host });
+          otherHeaders['user-agent'] = CHROME_UA;
+          if (deviceId) otherHeaders['x-device-id'] = deviceId;
+          upstream = await loginUpstream(other, otherTransport, url, method, pageHeaders, otherHeaders, body, waiting.signal);
+        }
+        const accepted = acceptedLogin(body, upstream);
+        if (accepted && typeof onAcceptedLogin === 'function') {
+          try { onAcceptedLogin(accepted); } catch (err) { /* the shop already accepted this person */ }
+        }
+      } finally {
+        waiting.done();
       }
-      const accepted = acceptedLogin(body, upstream);
-      if (accepted && typeof onAcceptedLogin === 'function') {
-        try { onAcceptedLogin(accepted); } catch (err) { /* the shop already accepted this person */ }
-      }
+      if (res.destroyed) return;
     } else {
       // A gateway 502 is not the shop. A read may try IPv4, then the
       // certificate the antivirus inserted, then Chromium, then the other
@@ -645,9 +700,19 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
         res.end(plain.body);
         return;
       }
+      const foreign = upstream && foreignSignature(decodeUpstream(upstream)) ? upstream : null;
       let blip = upstream && sessionBlip(upstream) ? upstream : null;
       if (blip) upstream = null;
-      if (!upstream && other && !once) {
+      // A fallback login returns a token signed by that fallback. If primary
+      // calls its signature invalid, the sibling must get the read that proves
+      // the new session. If both reject it, primary's honest BAD_TOKEN stays.
+      // An unknown one-shot outcome is still never repeated. An explicit
+      // BAD_TOKEN is different: authRequired rejects it before the route, so
+      // primary could not have applied the write. The token's issuer may get
+      // that same request and idempotency key once.
+      const otherMayAnswer = other && (!once || foreign);
+      if ((!upstream || foreign) && otherMayAnswer) {
+        if (foreign) upstream = null;
         const otherTransport = other.protocol === 'http:' ? http : https;
         const otherHeaders = forwardHeaders(req.headers, { host: other.host });
         otherHeaders['user-agent'] = CHROME_UA;
@@ -663,6 +728,7 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
           else if (sessionBlip(plain)) blip = plain;
         } catch (err) { /* the other host did not answer either */ }
       }
+      if (!upstream && foreign) upstream = foreign;
       if (!upstream && blip) upstream = blip;
     }
     if (upstream) {
@@ -681,4 +747,4 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip, shopEndedSession, foreignSignature };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip, shopEndedSession, foreignSignature, LOGIN_PROXY_WAIT_MS };
