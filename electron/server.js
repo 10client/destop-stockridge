@@ -29,10 +29,12 @@ const MIME = Object.freeze({
 
 const HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers', 'transfer-encoding', 'upgrade', 'host']);
 
-// Four serialized paths can take 30 seconds on each of the two Workers.
-// Keep a five-second margin inside the renderer's 70-second wait, and put a
-// hard stop on a response body that trickles past its socket-idle timeout.
+// One host can hold its serialized paths for 30 seconds; two hosts fit inside
+// this envelope. Keep five seconds inside the renderer's 70-second wait, and
+// put a hard stop on a response body that trickles past its idle timeout.
 const LOGIN_PROXY_WAIT_MS = 65000;
+const LOGIN_HOST_WAIT_MS = 30000;
+const LOGIN_ATTEMPT_WAIT_MS = 20000;
 
 function publicDir(root) {
   return path.resolve(root, 'public');
@@ -486,6 +488,9 @@ function loginAnswer(upstream) {
   if (!upstream || upstream.status == null) return null;
   const status = Number(upstream.status);
   const text = responseText(upstream);
+  const headers = upstream.headers || {};
+  if (/text\/html/i.test(String(headers['content-type'] || headers['Content-Type'] || ''))
+      || /^\s*<(?:!doctype|html)\b/i.test(text)) return null;
   if (status === 200) {
     try {
       const parsed = JSON.parse(text);
@@ -493,10 +498,30 @@ function loginAnswer(upstream) {
     } catch (err) { /* not a shop login */ }
     return null;
   }
-  if (status === 400 || status === 401 || status === 429) {
-    if (/BAD_CREDENTIALS|BAD_REQUEST|ACCOUNT_DEACTIVATED|ACCOUNT_UNAVAILABLE|LOGIN_LOCKED|Username or PIN/i.test(text)) return upstream;
+  // These are account/request decisions, not transport misses. In particular,
+  // a deactivated account or inactive subscription must not be replaced by a
+  // sibling login. Bad JSON is likewise deterministic for this same body.
+  if (status === 400 || status === 401 || status === 402 || status === 403 || status === 429) {
+    if (/BAD_CREDENTIALS|BAD_REQUEST|BAD_JSON|ACCOUNT_DEACTIVATED|ACCOUNT_UNAVAILABLE|SUBSCRIPTION_NOT_ACTIVE|LOGIN_LOCKED|Username or PIN/i.test(text)) return upstream;
   }
   return null;
+}
+
+// A real JSON 4xx/500 can be useful after every transport has failed, but it
+// must not prevent another path/host from producing a valid token. Keep only a
+// structured application response; HTML challenges and gateway 502/503/504
+// remain transport failures. The proxy returns this deferred answer last.
+function deferredLoginAnswer(upstream) {
+  if (!upstream || upstream.status == null) return null;
+  const status = Number(upstream.status);
+  if (status !== 500 && (status < 400 || status > 499)) return null;
+  const headers = upstream.headers || {};
+  if (/text\/html/i.test(String(headers['content-type'] || headers['Content-Type'] || ''))) return null;
+  let parsed;
+  try { parsed = JSON.parse(responseText(upstream)); } catch (_) { return null; }
+  if (!parsed || typeof parsed !== 'object' || parsed.offline === true) return null;
+  if (typeof parsed.error !== 'string' && typeof parsed.code !== 'string') return null;
+  return upstream;
 }
 
 function acceptedLogin(requestBody, upstream) {
@@ -525,31 +550,55 @@ function acceptedLogin(requestBody, upstream) {
 // One login request at a time. Two parallel logins would sign the same account
 // out of itself. This is not the window calling the Worker. A path that does
 // not return a real login answer is not kept, or a new person is never stored.
-async function loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body, signal) {
+async function loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body, signal, onDeferredAnswer) {
+  // A reachable Worker may legitimately need longer than the old eight-second
+  // socket-idle allowance for its user, session and audit queries. Give one
+  // response up to 20 seconds, but cap the WHOLE host at 30. Thus a slow valid
+  // response can finish without multiplying 20 seconds across every path.
+  const hostDeadline = Date.now() + LOGIN_HOST_WAIT_MS;
+  const hostControl = new AbortController();
+  const hostSignal = hostControl.signal;
+  const onParentAbort = () => hostControl.abort();
+  if (signal) {
+    if (signal.aborted) hostControl.abort();
+    else signal.addEventListener('abort', onParentAbort, { once: true });
+  }
+  // Node's request timeout is inactivity, not a total deadline. A response
+  // that trickles bytes must not hold primary until the sibling has no time.
+  const hostTimer = setTimeout(() => hostControl.abort(), LOGIN_HOST_WAIT_MS);
+  const timeout = (cap) => Math.max(1, Math.min(cap, LOGIN_ATTEMPT_WAIT_MS, hostDeadline - Date.now()));
   const tries = [];
   if (target.protocol === 'https:' && electronNet()) {
-    tries.push(() => netUpstream(target, url, method, pageHeaders, body, { timeout: 8000, signal }));
+    tries.push(() => netUpstream(target, url, method, pageHeaders, body, { timeout: timeout(LOGIN_ATTEMPT_WAIT_MS), signal: hostSignal }));
   }
-  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { timeout: 8000, signal }));
-  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: 8000, signal }));
+  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { timeout: timeout(LOGIN_ATTEMPT_WAIT_MS), signal: hostSignal }));
+  tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, { family: 4, timeout: timeout(LOGIN_ATTEMPT_WAIT_MS), signal: hostSignal }));
   if (target.protocol === 'https:') {
     tries.push(() => nodeUpstream(target, transport, url, method, nodeHeaders, body, {
       family: 4,
       rejectUnauthorized: false,
-      timeout: 6000,
-      signal,
+      timeout: timeout(6000),
+      signal: hostSignal,
     }));
   }
-  for (const attempt of tries) {
-    // An aborted window must not leave another login running, and the shared
-    // deadline must not start one last path after its budget has expired.
-    if (signal && signal.aborted) return null;
-    try {
-      const upstream = loginAnswer(decodeUpstream(await attempt()));
-      if (upstream) return upstream;
-    } catch (err) { /* this path did not answer a login */ }
+  try {
+    for (const attempt of tries) {
+      // An aborted window must not leave another login running. Nor may a dead
+      // host consume the sibling's budget by starting a path after its own cap.
+      if (hostSignal.aborted || Date.now() >= hostDeadline) return null;
+      try {
+        const plain = decodeUpstream(await attempt());
+        const upstream = loginAnswer(plain);
+        if (upstream) return upstream;
+        const deferred = deferredLoginAnswer(plain);
+        if (deferred && typeof onDeferredAnswer === 'function') onDeferredAnswer(deferred);
+      } catch (err) { /* this path did not answer a login */ }
+    }
+    return null;
+  } finally {
+    clearTimeout(hostTimer);
+    if (signal) signal.removeEventListener('abort', onParentAbort);
   }
-  return null;
 }
 
 // A screen read stays under the window's 20 second wait. A catalogue download
@@ -666,8 +715,10 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
     const other = fallback && fallback.origin !== target.origin ? fallback : null;
     if (login) {
       const waiting = watchLoginWindow(res);
+      let deferredLogin = null;
+      const deferLogin = (answer) => { deferredLogin = answer; };
       try {
-        upstream = await loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body, waiting.signal);
+        upstream = await loginUpstream(target, transport, url, method, pageHeaders, nodeHeaders, body, waiting.signal, deferLogin);
         // One login at a time. The other host is asked only when this host did
         // not answer a login. Two parallel logins would sign the account out.
         if (!upstream && other && !waiting.signal.aborted) {
@@ -675,8 +726,11 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
           const otherHeaders = forwardHeaders(req.headers, { host: other.host });
           otherHeaders['user-agent'] = CHROME_UA;
           if (deviceId) otherHeaders['x-device-id'] = deviceId;
-          upstream = await loginUpstream(other, otherTransport, url, method, pageHeaders, otherHeaders, body, waiting.signal);
+          upstream = await loginUpstream(other, otherTransport, url, method, pageHeaders, otherHeaders, body, waiting.signal, deferLogin);
         }
+        // A token or terminal account decision always wins. Only when neither
+        // host produced one do we reveal the last structured Worker failure.
+        if (!upstream && deferredLogin && !waiting.signal.aborted) upstream = deferredLogin;
         const accepted = acceptedLogin(body, upstream);
         if (accepted && typeof onAcceptedLogin === 'function') {
           try { onAcceptedLogin(accepted); } catch (err) { /* the shop already accepted this person */ }
@@ -747,4 +801,4 @@ function proxy(req, res, target, transport, url, offlineDoor, onAcceptedLogin, f
   }).catch(() => unreachable(res));
 }
 
-module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream, readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip, shopEndedSession, foreignSignature, LOGIN_PROXY_WAIT_MS };
+module.exports = { startServer, desktopIndex, safeFile, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, deferredLoginAnswer, acceptedLogin, decodeUpstream, readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBlip, shopEndedSession, foreignSignature, LOGIN_PROXY_WAIT_MS, LOGIN_HOST_WAIT_MS, LOGIN_ATTEMPT_WAIT_MS };

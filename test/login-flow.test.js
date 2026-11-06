@@ -10,6 +10,8 @@ const vm = require('node:vm');
 const {
   startServer,
   LOGIN_PROXY_WAIT_MS,
+  LOGIN_HOST_WAIT_MS,
+  LOGIN_ATTEMPT_WAIT_MS,
 } = require('../electron/server');
 const { LOGIN_WINDOW_WAIT_MS } = require('../public/js/desktop-production');
 
@@ -175,6 +177,126 @@ test('a delayed fallback sign-in is validated by its own host and is not repeate
     assert.equal(pair.counts['fallback POST /api/auth/login'], 1);
     assert.equal(pair.counts['fallback GET /api/auth/me'], 1);
     assert.equal(loginCount(pair.counts), 3); // two fast primary paths, then one fallback
+    assert.equal(calls.rememberVerifier, 1);
+  } finally {
+    await pair.cleanup();
+  }
+});
+
+test('a Worker that answers with a token after eight seconds is accepted on the first path', async () => {
+  const profile = { id: 'u-slow-local', username: 'slow-timing-probe', fullName: 'Slow Local Probe' };
+  const pair = await mockDesktop({
+    '/api/auth/login': (req, res) => json(res, 200, { token: 'synthetic-slow-primary-token', profile }, 9000),
+    '/api/auth/me': (req, res) => json(res, 200, { user: profile }),
+    '/api/health': (req, res) => json(res, 200, { ok: true }),
+  }, {
+    '/api/auth/login': (req, res) => json(res, 200, { token: 'synthetic-slow-fallback-token', profile }, 9000),
+    '/api/auth/me': (req, res) => json(res, 200, { user: profile }),
+    '/api/health': (req, res) => json(res, 200, { ok: true }),
+  });
+  try {
+    const { SR, calls } = loadDesktopLogin(pair.desktop.url);
+    const out = await SR.api.login({ username: 'slow-timing-probe', pin: '0000', remember: true });
+    assert.equal(out.token, 'synthetic-slow-primary-token');
+    assert.equal(pair.counts['primary POST /api/auth/login'], 1);
+    assert.equal(pair.counts['fallback POST /api/auth/login'], undefined);
+    assert.equal(calls.rememberVerifier, 1);
+  } finally {
+    await pair.cleanup();
+  }
+});
+
+test('a trickling primary cannot consume the slow fallback budget', async () => {
+  const profile = { id: 'u-slow-fallback-local', username: 'slow-fallback-probe', fullName: 'Slow Fallback Probe' };
+  const pair = await mockDesktop({
+    '/api/auth/login': (req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write(' ');
+      const trickle = setInterval(() => { if (!res.destroyed) res.write(' '); }, 1000);
+      res.on('close', () => clearInterval(trickle));
+    },
+    '/api/health': (req, res) => json(res, 200, { ok: true }),
+  }, {
+    '/api/auth/login': (req, res) => json(res, 200, { token: 'synthetic-slow-fallback-after-silent-primary', profile }, 9000),
+    '/api/auth/me': (req, res) => json(res, 200, { user: profile }),
+    '/api/health': (req, res) => json(res, 200, { ok: true }),
+  });
+  try {
+    const { SR, calls } = loadDesktopLogin(pair.desktop.url);
+    const out = await SR.api.login({ username: 'slow-fallback-probe', pin: '0000', remember: true });
+    assert.equal(out.token, 'synthetic-slow-fallback-after-silent-primary');
+    assert.equal(pair.counts['primary POST /api/auth/login'], 1);
+    assert.equal(pair.counts['fallback POST /api/auth/login'], 1);
+    assert.equal(calls.rememberVerifier, 1);
+  } finally {
+    await pair.cleanup();
+  }
+});
+
+test('a deactivated-account refusal is terminal and is not replaced by a sibling login', async () => {
+  const profile = { id: 'u-deactivated-local', username: 'deactivated-probe', fullName: 'Deactivated Probe' };
+  const pair = await mockDesktop({
+    '/api/auth/login': (req, res) => json(res, 403, { error: 'This account has been deactivated. Ask your manager for help.', code: 'ACCOUNT_DEACTIVATED' }),
+    '/api/health': (req, res) => json(res, 200, { ok: true }),
+  }, {
+    '/api/auth/login': (req, res) => json(res, 200, { token: 'must-not-replace-a-refusal', profile }),
+    '/api/auth/me': (req, res) => json(res, 200, { user: profile }),
+    '/api/health': (req, res) => json(res, 200, { ok: true }),
+  });
+  try {
+    const { SR } = loadDesktopLogin(pair.desktop.url);
+    await assert.rejects(SR.api.login({ username: 'deactivated-probe', pin: '0000', remember: false }), (err) => {
+      assert.equal(err.code, 'ACCOUNT_DEACTIVATED');
+      assert.match(err.message, /deactivated/);
+      return true;
+    });
+    assert.equal(pair.counts['primary POST /api/auth/login'], 1);
+    assert.equal(pair.counts['fallback POST /api/auth/login'], undefined);
+  } finally {
+    await pair.cleanup();
+  }
+});
+
+test('a real Worker server error survives the transport sequence instead of becoming login not stuck', async () => {
+  const failure = (req, res) => json(res, 500, { error: 'The shop could not save this sign-in.', code: 'LOGIN_WRITE_FAILED' });
+  const pair = await mockDesktop({
+    '/api/auth/login': failure,
+    '/api/health': (req, res) => json(res, 200, { ok: true }),
+  }, {
+    '/api/auth/login': failure,
+    '/api/health': (req, res) => json(res, 200, { ok: true }),
+  });
+  try {
+    const { SR } = loadDesktopLogin(pair.desktop.url);
+    await assert.rejects(SR.api.login({ username: 'server-error-probe', pin: '0000', remember: false }), (err) => {
+      assert.equal(err.code, 'LOGIN_WRITE_FAILED');
+      assert.equal(err.isOffline, false);
+      assert.match(err.message, /could not save this sign-in/);
+      return true;
+    });
+    assert.equal(pair.counts['primary POST /api/auth/login'], 2);
+    assert.equal(pair.counts['fallback POST /api/auth/login'], 2);
+  } finally {
+    await pair.cleanup();
+  }
+});
+
+test('a primary server error does not block a healthy fallback token', async () => {
+  const profile = { id: 'u-healthy-fallback-local', username: 'healthy-fallback-probe', fullName: 'Healthy Fallback Probe' };
+  const pair = await mockDesktop({
+    '/api/auth/login': (req, res) => json(res, 500, { error: 'Primary could not save this sign-in.', code: 'LOGIN_WRITE_FAILED' }),
+    '/api/health': (req, res) => json(res, 200, { ok: true }),
+  }, {
+    '/api/auth/login': (req, res) => json(res, 200, { token: 'synthetic-token-after-primary-500', profile }),
+    '/api/auth/me': (req, res) => json(res, 200, { user: profile }),
+    '/api/health': (req, res) => json(res, 200, { ok: true }),
+  });
+  try {
+    const { SR, calls } = loadDesktopLogin(pair.desktop.url);
+    const out = await SR.api.login({ username: 'healthy-fallback-probe', pin: '0000', remember: true });
+    assert.equal(out.token, 'synthetic-token-after-primary-500');
+    assert.equal(pair.counts['primary POST /api/auth/login'], 2);
+    assert.equal(pair.counts['fallback POST /api/auth/login'], 1);
     assert.equal(calls.rememberVerifier, 1);
   } finally {
     await pair.cleanup();
@@ -357,6 +479,10 @@ test('renderer cancellation closes the active login and starts no later path or 
 });
 
 test('the proxy login cap covers two serialized hosts and finishes before the renderer', () => {
+  assert.equal(LOGIN_HOST_WAIT_MS, 30000);
+  assert.equal(LOGIN_ATTEMPT_WAIT_MS, 20000);
+  assert.ok(LOGIN_ATTEMPT_WAIT_MS > 8000);
+  assert.ok(LOGIN_HOST_WAIT_MS * 2 <= LOGIN_PROXY_WAIT_MS);
   assert.ok(LOGIN_PROXY_WAIT_MS >= 60000);
   assert.ok(LOGIN_PROXY_WAIT_MS < LOGIN_WINDOW_WAIT_MS);
   assert.equal(LOGIN_WINDOW_WAIT_MS - LOGIN_PROXY_WAIT_MS, 5000);

@@ -560,7 +560,9 @@
           err.status = res.status;
           err.code = (body && body.code) || `HTTP_${res.status}`;
           err.payload = body;
-          err.isOffline = res.status >= 500 || err.code === 'OFFLINE' || err.code === 'UPSTREAM_UNREACHABLE'
+          // A structured Worker 500 is a server answer, not proof of outage.
+          // Only transport/gateway failures may open the saved-till path.
+          err.isOffline = err.code === 'OFFLINE' || err.code === 'UPSTREAM_UNREACHABLE'
             || /shop server could not be reached|did not answer from this window|failed to fetch/i.test(err.message);
           throw err;
         }

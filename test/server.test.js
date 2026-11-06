@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
-const { startServer, desktopIndex, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, acceptedLogin, decodeUpstream } = require('../electron/server');
+const { startServer, desktopIndex, browserHeaders, electronLostDevice, withBodyLength, responseForWindow, chooseStaticFile, loginAnswer, deferredLoginAnswer, acceptedLogin, decodeUpstream } = require('../electron/server');
 
 test('the shop request does not forward the local window address', () => {
   const headers = browserHeaders({
@@ -29,7 +29,12 @@ test('a login answer is a shop token or a PIN refusal, not an HTML block', () =>
   assert.equal(token.status, 200);
   assert.equal(loginAnswer({ status: 403, body: Buffer.from('<html>error code: 1010</html>') }), null);
   assert.equal(loginAnswer({ status: 401, body: Buffer.from('{"code":"BAD_CREDENTIALS","error":"Username or PIN is incorrect."}') }).status, 401);
+  assert.equal(loginAnswer({ status: 403, body: Buffer.from('{"code":"ACCOUNT_DEACTIVATED","error":"This account has been deactivated."}') }).status, 403);
+  assert.equal(loginAnswer({ status: 403, body: Buffer.from('<html>ACCOUNT_DEACTIVATED</html>') }), null);
   assert.equal(loginAnswer({ status: 200, body: Buffer.from('{"ok":true}') }), null);
+  assert.equal(deferredLoginAnswer({ status: 500, headers: { 'content-type': 'application/json' }, body: Buffer.from('{"code":"LOGIN_WRITE_FAILED","error":"Could not save sign-in."}') }).status, 500);
+  assert.equal(deferredLoginAnswer({ status: 502, headers: { 'content-type': 'application/json' }, body: Buffer.from('{"error":"Bad gateway"}') }), null);
+  assert.equal(deferredLoginAnswer({ status: 500, headers: { 'content-type': 'text/html' }, body: Buffer.from('{"error":"Challenge"}') }), null);
   const accepted = acceptedLogin(
     Buffer.from('{"username":"Bola","pin":"13579"}'),
     { status: 200, body: Buffer.from('{"token":"abc","profile":{"username":"Bola","pin":"13579"}}') },
