@@ -6,7 +6,7 @@ const { readBudgets, isOneShotWrite, requestMayHaveLanded, shopSpoke, sessionBli
 
 test('every shop read can use IPv4, the inspected certificate, and the other host', () => {
   const budget = readBudgets('/api/health');
-  const screen = readBudgets('/api/dashboard');
+  const screen = readBudgets('/api/products');
   assert.equal(budget.v4, screen.v4);
   assert.ok(budget.v4 > 0);
   assert.ok(budget.insecure > 0);
@@ -15,13 +15,18 @@ test('every shop read can use IPv4, the inspected certificate, and the other hos
   assert.equal(budget.catalogue, false);
 });
 
-test('a catalogue download is not cut off by the screen read budget', () => {
+test('catalogue and dashboard reads are not cut off by the ordinary screen budget', () => {
   const pull = readBudgets('/api/sync/pull');
-  const screen = readBudgets('/api/dashboard');
+  const screen = readBudgets('/api/products');
+  const dashboard = readBudgets('/api/dashboard');
   assert.ok(pull.v4 >= 50000);
   assert.ok(pull.v4 > screen.v4);
   assert.equal(pull.catalogue, true);
   assert.equal(screen.catalogue, false);
+  assert.ok(dashboard.v4 > screen.v4);
+  assert.ok(dashboard.insecure > 0);
+  assert.ok(dashboard.v4 + dashboard.node + dashboard.insecure + dashboard.net + dashboard.sibling <= 24000);
+  assert.equal(dashboard.catalogue, false);
 });
 
 test('a purchase order is sent once and is not asked of the other host', () => {

@@ -635,6 +635,12 @@ function readBudgets(urlPath, method) {
   if (path.indexOf('/api/sync/pull') !== -1 || path.indexOf('/api/sync/push') !== -1) {
     return { v4: 55000, node: 0, insecure: 55000, net: 0, sibling: 8000, catalogue: true, once: false };
   }
+  // The full dashboard derives many figures. Its independent SELECTs are
+  // batched by the Worker; this envelope lets that real answer finish inside
+  // the view's 25-second wait instead of abandoning it at the health-read 4.5s.
+  if (path.split('?')[0] === '/api/dashboard') {
+    return { v4: 10000, node: 0, insecure: 4000, net: 0, sibling: 10000, catalogue: false, once: false };
+  }
   if (isOneShotWrite(method, path)) {
     return { v4: 18000, node: 0, insecure: 0, net: 0, sibling: 0, catalogue: false, once: true };
   }
