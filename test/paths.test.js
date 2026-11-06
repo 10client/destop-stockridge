@@ -9,9 +9,11 @@ const { PWA_ORIGIN, OFFICE_ORIGIN, SHARED_DATABASE } = require('../lib/shared-bo
 
 test('the PWA, the desktop till, and the Android app name the same database', () => {
   const android = fs.readFileSync(path.join(__dirname, '..', 'android', 'app', 'src', 'main', 'res', 'values', 'strings.xml'), 'utf8');
+  const adminTool = fs.readFileSync(path.join(__dirname, '..', '..', 'stockridge', 'tools', 'turso-admin.js'), 'utf8');
   assert.equal(SAMPLE_ORIGIN, PWA_ORIGIN);
   assert.equal(OFFICE_ORIGIN, 'https://stockridge.stockridge.workers.dev');
-  assert.equal(SHARED_DATABASE, 'stockridge-10client.aws-eu-north-1.turso.io');
+  assert.equal(SHARED_DATABASE, 'stock2-mohammed-hayatudeen.aws-eu-central-1.turso.io');
+  assert.match(adminTool, /name: 'stock2'/);
   assert.match(android, new RegExp(PWA_ORIGIN.replace(/[.]/g, '\\.')));
   assert.equal(workerOrigin({}), PWA_ORIGIN);
 });

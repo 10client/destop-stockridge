@@ -117,6 +117,7 @@ test('serves the UI from the checkout and proxies /api without accepting a path 
   fs.mkdirSync(path.join(root, 'public', 'js'), { recursive: true });
   fs.writeFileSync(path.join(root, 'public', 'index.html'), '<script src="/js/store.js?v=1"></script>\n<script>\n  if (\'serviceWorker\' in navigator) {\n    window.addEventListener(\'load\', function () {\n      navigator.serviceWorker.register(\'/sw.js\').catch(function () {});\n    });\n  }\n</script>\n');
   fs.writeFileSync(path.join(root, 'public', 'js', 'store-native.js'), 'window.__bridge = true;\n');
+  fs.writeFileSync(path.join(root, 'public', 'js', 'save-status.js'), 'window.SR = {}; window.SR.saveStatus = { decide: function () {} };\n/* staged-shared-save-status */\n');
   const desktop = await startServer({
     root,
     origin: `http://127.0.0.1:${upPort}`,
@@ -142,7 +143,9 @@ test('serves the UI from the checkout and proxies /api without accepting a path 
     assert.equal((await health.json()).engine, 'sqlite');
     const saveStatus = await fetch(desktop.url + 'js/save-status.js');
     assert.equal(saveStatus.status, 200);
-    assert.match(await saveStatus.text(), /SR\.saveStatus/);
+    const saveStatusSource = await saveStatus.text();
+    assert.match(saveStatusSource, /SR\.saveStatus/);
+    assert.match(saveStatusSource, /staged-shared-save-status/);
     const bridge = await fetch(desktop.url + 'js/store-native.js');
     const script = await bridge.text();
     assert.equal(bridge.status, 200);

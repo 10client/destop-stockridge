@@ -155,7 +155,12 @@ function productionScript() {
   return path.join(__dirname, '..', 'public', 'js', 'desktop-production.js');
 }
 
-function saveStatusScript() {
+function saveStatusScript(root) {
+  // The staged shared file is authoritative. Overriding it with a separate
+  // desktop implementation left Electron on the old whole-catalogue count
+  // after the PWA/Android stock-only rule had already shipped.
+  const staged = path.join(publicDir(root), 'js', 'save-status.js');
+  if (fs.existsSync(staged)) return staged;
   return path.join(__dirname, '..', 'public', 'js', 'save-status.js');
 }
 
@@ -169,7 +174,7 @@ function serveStatic(root, urlPath, res, cacheRoot, origin) {
   if (pathname === '/js/store-native.js' || pathname === '/js/desktop-production.js' || pathname === '/js/save-status.js') {
     const bundled = pathname === '/js/store-native.js'
       ? bridgeScript()
-      : (pathname === '/js/save-status.js' ? saveStatusScript() : productionScript());
+      : (pathname === '/js/save-status.js' ? saveStatusScript(root) : productionScript());
     if (fs.existsSync(bundled)) {
       res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-store' });
       fs.createReadStream(bundled).pipe(res);
@@ -530,7 +535,7 @@ async function loginUpstream(target, transport, url, method, pageHeaders, nodeHe
 function isOneShotWrite(method, urlPath) {
   const verb = String(method || 'GET').toUpperCase();
   if (verb === 'GET' || verb === 'HEAD' || verb === 'OPTIONS') return false;
-  const path = String(urlPath && urlPath.pathname ? urlPath.pathname : urlPath || '');
+  const path = String(urlPath && urlPath.pathname ? urlPath.pathname : urlPath || '').split('?')[0];
   // Pull and push already carry idempotency keys, and they need the long
   // budget. Login is one request in its own branch. Every other write is sent
   // once.

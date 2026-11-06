@@ -9,13 +9,12 @@ The cloud database stays where it is. This app does **not** sync a till straight
 From this folder, on the shop computer:
 
 ```
-npm install
+npm ci
 npm test
-npm run rebuild
 npm start
 ```
 
-`npm run rebuild` compiles SQLite for Electron's own Node build. Skip it and the window will refuse to open the database. After a rebuild, `npm test` needs `npm rebuild better-sqlite3` first, because the two Node builds are not the same.
+Use Node.js 22.12 or newer and the locked N-API SQL prebuild. Do **not** run `npm run rebuild`, `npm rebuild`, `node-gyp`, or compile the SQL library. Electron is 44.10.0 and electron-builder has `npmRebuild: false`; a native-module problem needs the matching prebuilt package/environment, not a compiler fallback.
 
 `npm start` opens the window. The UI is read from the StockRidge checkout next to this folder (`../stockridge`). Point elsewhere with `STOCKRIDGE_ROOT`.
 
@@ -25,13 +24,13 @@ API calls go to `STOCKRIDGE_ORIGIN`. The default is the sample Worker, `https://
 
 `npm start` is the development window. It still needs the checkout beside this folder. The archive is the program you copy to a shop computer. It carries the shop screens inside it. It does not deploy the website.
 
-From this folder, after `npm install`:
+From this folder on the Windows build machine, after `npm ci` and after staging the final shared UI:
 
 ```
 npm run archive
 ```
 
-That builds for the operating system you are on. With no origin set, it signs in against the same Turso books as the PWA, `https://sample.stockridge.workers.dev`. The file lands in `dist/`.
+The approved target is only the unpacked Windows directory (`--win dir`), written under `dist/win-unpacked`. It is not a portable-exe build; do not open the old portable exe. With no origin set, the build signs in against the same Turso books as the PWA, `https://sample.stockridge.workers.dev`.
 
 The office host `https://stockridge.stockridge.workers.dev` is the same Turso books as the sample PWA. Either address shows water packing, bakery and the other verticals. A later client's own Worker still replaces the default.
 
@@ -41,7 +40,7 @@ A later client's own Worker replaces the default:
 STOCKRIDGE_ORIGIN=https://client.example.workers.dev npm run archive
 ```
 
-You cannot build a Windows program on a Mac, or a Mac program on Windows. Run the command on the kind of computer the shop will use. The Windows file is not code-signed unless `CSC_LINK` points at your `.pfx` and `CSC_KEY_PASSWORD` is set. Without that certificate, Windows SmartScreen can warn, and the archive skips the signing tools on purpose.
+Run the approved Windows `dir` build on the shop's Windows build machine with Node.js 22.12 or newer. The output is not code-signed unless appropriate signing credentials are configured; without them Windows SmartScreen can warn, and the archive deliberately leaves `signAndEditExecutable` false.
 
 ## Production till
 
@@ -59,7 +58,7 @@ The database file lives in the operating system's app-data folder, named `stockr
 
 A till that has been selling in Chrome on the hosted site does not hand its queue over automatically. Chrome's IndexedDB belongs to that site, and this window cannot read it. On that Chrome till, open Sync and choose Back up this device. In the desktop window, open Sync and choose Restore from a backup. Do that before abandoning the browser, or unsynced sales stay in Chrome.
 
-If Electron says it cannot open the native SQLite module, run `npm run rebuild` again. A C++ compiler and Python are required for that step (`build-essential` and `python3` on Ubuntu).
+If Electron cannot open the native SQLite module, stop and restore the locked N-API prebuild for the Electron 44/Node 22 environment. Do not run a rebuild script or compile a fallback, and do not delete the existing till database.
 
 ## What the window changes
 
@@ -71,6 +70,6 @@ If Electron says it cannot open the native SQLite module, run `npm run rebuild` 
 
 ## What this is not
 
-The Android app is `android/`. It is a WebView around the same Worker, and it removes Download and Install. Chrome on the phone does not. It does not open `stockridge.db`. The machine that already builds the unpacked exe follows `docs/android-from-the-electron-machine.pdf` and runs `tools/android-from-electron.ps1`. Change the Worker in `android/app/src/main/res/values/strings.xml` before a client APK, and do not commit that client's address. The demonstration address must not ship to a shop. Offline SQLite on Android, a Play Store listing, and a signed release are not in this folder yet.
+The Android app is `android/`. It is a WebView around the same Worker, and it removes Download and Install. Chrome on the phone does not. It does not open `stockridge.db`. From this checkout, the current phone command is `& .\tools\android-from-electron.ps1` with no `-Install` or `-Origin`; see `android/README.md`. A shared `public/js` change reaches the phone through the Worker, not through an APK rebuild. Rebuild the APK only for native Android changes. Offline SQLite on Android, a Play Store listing, and a signed release are not in this folder yet.
 
 The till file is SQLCipher. The LAN hub, a named receipt printer, and a hash-checked program download are in this folder. None of them opens Turso. The books the PWA and this window share are the Turso database behind the Worker.

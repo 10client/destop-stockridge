@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
  * This is not the Windows till. It does not open stockridge.db, stockridge.key,
  * or Turso. Sales still go through the Worker. The last shop screen is kept
  * on this phone so the till can open when the line is down. It does not cache /api/.
- * The build paper is docs/android-from-the-electron-machine.pdf.
+ * The current build contract is android/README.md; keeper papers are not runtime files.
  */
 public class MainActivity extends Activity {
     // Same signature the Windows till sends. A Dalvik client is not a browser,

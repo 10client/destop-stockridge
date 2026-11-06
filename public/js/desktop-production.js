@@ -2,6 +2,21 @@
 // Loaded only by the desktop window. A browser that opens the hosted site
 // does not get this file. It does not store a PIN and it does not talk to Turso.
 (function (global) {
+  function desktopFetchPolicy(input, init, url, api) {
+    const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+    // Use the shared policy whenever the normal script order has loaded api.js.
+    // The conservative fallback still protects writes if this file is tested or
+    // opened on its own; it must never turn a missed POST into a second POST.
+    const oneShot = api && typeof api.isOneShotWrite === 'function'
+      ? api.isOneShotWrite(method, url)
+      : (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
+        && String(url || '').indexOf('/api/sync/pull') === -1
+        && String(url || '').indexOf('/api/sync/push') === -1
+        && String(url || '').split('?')[0] !== '/api/auth/login');
+    return { method, oneShot: Boolean(oneShot) };
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = { desktopFetchPolicy };
+
   const native = global.stockridgeNative;
   if (!native || !native.store) return;
 
@@ -202,6 +217,7 @@
       const localApi = url.indexOf('/api/') !== -1;
       if (!localApi) return origFetch(input, init);
       const target = url === String((input && input.url) || input || '') ? input : url;
+      const policy = desktopFetchPolicy(input, init, url, global.SR && global.SR.api);
       const id = deviceIdNow();
       const headers = new Headers((init && init.headers) || {});
       if (id) headers.set('X-Device-Id', id);
@@ -213,7 +229,9 @@
         const copy = res.clone();
         const text = await copy.text().catch(() => '');
         noteShopResponse(res.status, text, url);
-        if (res.status !== 401) return res;
+        // A one-shot write gets no device-header second attempt either. The
+        // proxy already sent it once; only the shop's actual answer comes back.
+        if (res.status !== 401 || policy.oneShot) return res;
         let final = res;
         if (text.includes('SESSION_SUPERSEDED')) {
           const againId = deviceIdNow();
@@ -233,6 +251,14 @@
         // A login must reach the proxy. A fake miss here means a new person is
         // never stored, and the screen then says the shop did not answer.
         if (isLogin) throw err;
+        // Do not route around electron/server.js's one-shot-write guard. The
+        // first proxy request may have landed even though this fetch rejected.
+        // Shared api.js will keep/replay the logical operation with its stable
+        // idempotency key instead of issuing another transport attempt here.
+        if (policy.oneShot) {
+          noteShopResponse(502, '{"code":"OFFLINE"}', url);
+          return shopMissResponse();
+        }
         const controller = new AbortController();
         const timer = setTimeout(() => {
           try { controller.abort(new DOMException('The shop did not answer in time.', 'AbortError')); } catch (e) { controller.abort(); }
@@ -902,4 +928,4 @@
     setInterval(paint, 4000);
     window.addEventListener('popstate', () => { setTimeout(paint, 50); });
   }
-}(window));
+}(typeof window !== 'undefined' ? window : globalThis));

@@ -58,7 +58,9 @@ test('the Android build path is the Electron machine path, not a second till', (
   assert.match(manifest, /ACCESS_NETWORK_STATE/);
   assert.match(hide, /shell = 'android'/);
   assert.match(readme, /does not open Turso/);
-  assert.match(readme, /android-from-the-electron-machine\.pdf/);
+  assert.match(readme, /& \.\\tools\\android-from-electron\.ps1/);
+  assert.match(readme, /do not add `-Install` or `-Origin`/);
+  assert.doesNotMatch(readme, /docs\/|stockridge-10client|pass `-Origin`/);
 
   assert.equal(fs.existsSync(path.join(root, 'android', 'gradlew.bat')), true);
   assert.equal(fs.existsSync(path.join(root, 'android', 'gradle', 'wrapper', 'gradle-wrapper.jar')), true);
@@ -66,15 +68,16 @@ test('the Android build path is the Electron machine path, not a second till', (
   assert.equal(jar.subarray(0, 2).toString('utf8'), 'PK');
 });
 
-test('the paper and the till rules agree the phone is not the till file', () => {
-  const rules = read('docs/till-fixes.md');
-  const audit = read('docs/production-audit.md');
-  assert.match(rules, /The Android app is not the Windows till/);
-  assert.match(rules, /android-from-electron\.ps1/);
-  assert.match(audit, /The phone is not built by the Electron packager/);
-  assert.match(audit, /Not deployed/);
-  const pdf = path.join(root, 'docs', 'android-from-the-electron-machine.pdf');
-  assert.equal(fs.existsSync(pdf), true);
-  const head = fs.readFileSync(pdf).subarray(0, 5).toString('utf8');
-  assert.equal(head, '%PDF-');
+test('Android native delivery is separate from shared-UI deployment', () => {
+  const script = read('tools/android-from-electron.ps1');
+  const stage = read('tools/stage-ui.js');
+  const activity = read('android/app/src/main/java/com/stockridge/till/MainActivity.java');
+  const readme = read('android/README.md');
+  assert.match(script, /Does not deploy/i);
+  assert.match(script, /assembleDebug/);
+  assert.doesNotMatch(script, /stockridge\.db['"]?\s*[:=]/i);
+  assert.match(stage, /Staged shop screens/);
+  assert.match(activity, /loadUrl|stockridge_origin/);
+  assert.match(readme, /shared-UI change reaches the phone through the Worker/);
+  assert.match(readme, /rebuild the APK only for native Android changes/);
 });

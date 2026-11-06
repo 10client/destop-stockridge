@@ -16,7 +16,7 @@ test('a screen path cannot leave the shop folder', () => {
   assert.equal(extractRefs('<script src="/js/views/deliveries.js?v=ridge-1"></script>').length, 1);
 });
 
-test('the till takes the PWA screens, including a water-packing page, and ignores another host', async () => {
+test('shipped HTML beats the old cache and a missing asset is filled from the PWA', async () => {
   const upstream = http.createServer((req, res) => {
     const url = req.url.split('?')[0];
     if (url === '/') {
@@ -62,8 +62,10 @@ test('the till takes the PWA screens, including a water-packing page, and ignore
     try {
       const page = await fetch(desktop.url);
       const html = await page.text();
-      assert.match(html, /admin\.js/);
-      assert.doesNotMatch(html, /old office screens/);
+      // R5: an old downloaded screen must not hide a file already shipped in
+      // this program. The cache fills a missing asset, not the packaged index.
+      assert.doesNotMatch(html, /admin\.js/);
+      assert.match(html, /old office screens/);
       const script = await fetch(desktop.url + 'js/views/admin.js');
       assert.match(await script.text(), /water-packing/);
       const worker = await fetch(desktop.url + 'sw.js');

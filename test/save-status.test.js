@@ -60,6 +60,17 @@ test('a refused session or a short catalogue is not Saved', () => {
   assert.notEqual(refused.label, 'Saved');
   assert.equal(refused.finished, false);
   assert.match(refused.detail, /did not accept this session, so the catalogue was not copied/);
+  const stockOnly = decideSaveStatus({
+    lastPullAt: '2026-10-28 19:01:00',
+    stockRows: 11,
+    productRows: 20,
+    visibleProducts: 20,
+    // The Greenbook/shared catalogue is not the till's stock-only mirror.
+    shopProductCount: 6804,
+    salesCopied: true,
+  });
+  assert.equal(stockOnly.label, 'Saved');
+  assert.equal(stockOnly.finished, true);
   const short = decideSaveStatus({
     lastPullAt: '2026-10-28 19:01:00',
     stockRows: 11,
@@ -67,14 +78,16 @@ test('a refused session or a short catalogue is not Saved', () => {
     visibleProducts: 20,
     shopProductCount: 50,
     salesCopied: true,
+    truncated: ['products'],
   });
   assert.equal(short.label, 'Part saved');
-  assert.match(short.detail, /shop has 50 products/);
-  assert.match(short.detail, /till has 20/);
+  assert.match(short.detail, /did not finish/);
 });
 
 test('the till script uses the same decision as the library', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'save-status.js'), 'utf8');
+  const shared = fs.readFileSync(path.join(__dirname, '..', '..', 'stockridge', 'public', 'js', 'save-status.js'), 'utf8');
+  assert.equal(source, shared, 'Electron fallback must not drift from the shared stock-only decision');
   const sandbox = { window: {} };
   vm.runInNewContext(source, sandbox);
   const facts = { pending: 1, online: true, lastPullAt: 'x', stockRows: 2, productRows: 3 };
